@@ -90,12 +90,12 @@ def run_tSne(data, parameters=None):
         D = np.square(D)
 
         print('Computing t-SNE')
-        tsne = TSNE(perplexity=parameters.perplexity, metric='precomputed', verbose=1, n_jobs=-1,
-                    method=parameters.tSNE_method)
+        tsne = TSNE(perplexity=parameters.perplexity,learning_rate='auto', metric='precomputed', verbose=1, n_jobs=-1,
+                    method=parameters.tSNE_method,n_iter=parameters.maxOptimIter)
         yData = tsne.fit_transform(D)
     else:
-        tsne = TSNE(perplexity=parameters.perplexity, metric='euclidean', verbose=1, n_jobs=-1,
-                    method=parameters.tSNE_method)
+        tsne = TSNE(perplexity=parameters.perplexity,learning_rate='auto', metric='euclidean', verbose=1, n_jobs=-1,
+                    method=parameters.tSNE_method,n_iter=parameters.maxOptimIter)
         yData = tsne.fit_transform(data)
         # raise ValueError('tSNE not implemented for runs without wavelet decomposition.')
     return yData
@@ -203,6 +203,7 @@ def mm_findWavelets(projections, numModes, parameters):
                                  parameters.useGPU)
     return amplitudes, f
 
+import pathlib
 def file_embeddingSubSampling(projectionFile, parameters):
     perplexity = parameters.training_perplexity
     numPoints = parameters.training_numPoints
@@ -230,15 +231,31 @@ def file_embeddingSubSampling(projectionFile, parameters):
 
     if parameters.waveletDecomp:
         print('\t Calculating Wavelets')
-        data, _ = mm_findWavelets(projections, numModes, parameters)
+        print(f'{parameters.projectPath}/Wavelets/{pathlib.Path(projectionFile).stem}-wavelets.mat')
+        if not os.path.exists(f'{parameters.projectPath}/Wavelets/{pathlib.Path(projectionFile).stem}-wavelets.mat'):
+            data, _ = mm_findWavelets(projections, numModes, parameters)
+        else:
+            print("\n Loading wavelets")
+            # projections = np.array(loadmat(projectionFile, variable_names=['projections'])['projections'])
+            with h5py.File(f'{parameters.projectPath}/Wavelets/{pathlib.Path(projectionFile).stem}-wavelets.mat', 'r') as f:
+                data = f['wavelets'][:]
+            print("\n Loaded wavelets")
+            # data = loadmat(f'{parameters.projectPath}/Wavelets/{pathlib.Path(projectionFile).stem}-wavelets.mat')
+
         signalIdx = np.indices((data.shape[0],))[0]
         signalIdx = signalIdx[firstFrame:int(firstFrame + (numPoints) * skipLength): skipLength]
+        print("\n Subsampled wavelets")
         if parameters.useGPU >= 0:
             data2 = data[signalIdx].copy()
-            signalData = data2.get()
+            signalData = data2#.get()
+            if not os.path.exists(f'{parameters.projectPath}/Wavelets/{pathlib.Path(projectionFile).stem}-wavelets.mat'):
+                with h5py.File(f'{parameters.projectPath}/Wavelets/{pathlib.Path(projectionFile).stem}-wavelets.mat', 'w') as f:
+                    f.create_dataset('wavelets', data=data, compression="lzf")
             del data, data2
         else:
             signalData = data[signalIdx]
+
+
     else:
         print('Using projections for tSNE. No wavelet decomposition.')
         data = projections
@@ -258,7 +275,32 @@ def file_embeddingSubSampling(projectionFile, parameters):
     else:
         raise ValueError('Supported parameter.method are \'TSNE\' or \'UMAP\'')
     return yData,signalData,signalIdx,signalAmps
+from tqdm import tqdm
 
+def get_wavelets(projectionFiles, parameters):
+    L = len(projectionFiles)
+    for i in tqdm(range(L)):
+        print('Finding training set contributions from data set %i/%i : \n%s'%(i+1, L, projectionFiles[i]))
+        calc_and_write_wavelets(projectionFiles[i], parameters)
+
+
+
+def calc_and_write_wavelets(projectionFile, parameters):
+    print('\t Loading Projections')
+
+    with h5py.File(projectionFile, 'r') as hfile:
+        projections = hfile['projections'][:].T
+    projections = np.array(projections)
+
+    if parameters.waveletDecomp:
+        print('\t Calculating Wavelets')
+        if not os.path.exists(f'{parameters.projectPath}/Wavelets/{pathlib.Path(projectionFile).stem}-wavelets.mat'):
+            data, _ = mm_findWavelets(projections, parameters.pcaModes, parameters)
+            # print(f'Data: {data[0:5,:]}')
+            print(f"\n Saving wavelets: {data.shape}")
+            with h5py.File(f'{parameters.projectPath}/Wavelets/{pathlib.Path(projectionFile).stem}-wavelets.mat', 'w') as f:
+                f.create_dataset('wavelets', data=data, compression="lzf")
+import natsort
 def runEmbeddingSubSampling(projectionDirectory, parameters):
     """
     runEmbeddingSubSampling generates a training set given a set of .mat files.
@@ -274,7 +316,7 @@ def runEmbeddingSubSampling(projectionDirectory, parameters):
     """
     parameters = setRunParameters(parameters)
     projectionFiles = glob.glob(projectionDirectory+'/*pcaModes.mat')
-    
+    projectionFiles = natsort.natsorted(projectionFiles)
     N = parameters.trainingSetSize
     L = len(projectionFiles)
     numPerDataSet = round(N / L)
@@ -301,7 +343,6 @@ def runEmbeddingSubSampling(projectionDirectory, parameters):
         currentIdx = np.arange(numPerDataSet) + (i * numPerDataSet)
 
         yData, signalData, _, signalAmps = file_embeddingSubSampling(projectionFiles[i], parameters)
-
         trainingSetData[currentIdx,:], trainingSetAmps[currentIdx] = findTemplatesFromData(signalData, yData,
                                                                                            signalAmps, numPerDataSet,
                                                                                         parameters,projectionFiles[i])
@@ -391,7 +432,7 @@ def subsampled_tsne_from_projections(parameters,results_directory):
 def returnCorrectSigma_sparse(ds, perplexity, tol,maxNeighbors):
 
     highGuess = np.max(ds)
-    lowGuess = 1e-10
+    lowGuess = 1e-12
 
     sigma = .5*(highGuess + lowGuess)
 
@@ -429,6 +470,7 @@ def returnCorrectSigma_sparse(ds, perplexity, tol,maxNeighbors):
         idx = p>0
         H = np.sum(-np.multiply(p[idx],np.log(p[idx]))/np.log(2))
         P = 2**H
+
 
         if np.abs(P-perplexity) < tol:
             test = False
@@ -495,7 +537,7 @@ def TDistProjs(i, q, perplexity, sigmaTolerance, maxNeighbors, trainingEmbedding
     b[1, :], c[1], _, _, flags[1] = fmin(costfunc, x0=guesses[1], args=(z, p[idx2]), disp=False,
                                          full_output=True, maxiter=100)
     if (i+1)%readout == 0:
-        print('\t\t FminSearch Done Image #%5i %0.02fseconds flags are %s'%(i+1, time.time()-t1, flags))
+        print('\t\t FminSearch Done Image #%5i %0.02fseconds \n Flags are %s'%(i+1, time.time()-t1, flags))
 
     polyIn = q.find_simplex(b)>=0
 
@@ -518,7 +560,7 @@ def TDistProjs(i, q, perplexity, sigmaTolerance, maxNeighbors, trainingEmbedding
 
 
 def findTDistributedProjections_fmin(data, trainingData, trainingEmbedding, parameters):
-    readout = 20000
+    readout = 100000
     sigmaTolerance = 1e-5
     perplexity = parameters.perplexity
     maxNeighbors = parameters.maxNeighbors
@@ -583,7 +625,7 @@ def findTDistributedProjections_fmin(data, trainingData, trainingEmbedding, para
     return zValues,zCosts,zGuesses,inConvHull,meanMax,exitFlags
 
 
-def findEmbeddings(projections, trainingData, trainingEmbedding, parameters):
+def findEmbeddings(projections, trainingData, trainingEmbedding, parameters,projectionFile):
     """
     findEmbeddings finds the optimal embedding of a data set into a previously
     found t-SNE embedding.
@@ -600,9 +642,20 @@ def findEmbeddings(projections, trainingData, trainingEmbedding, parameters):
 
     if parameters.waveletDecomp:
         print('Finding Wavelets')
-        data, f = mm_findWavelets(projections, numModes, parameters)
-        if parameters.useGPU >= 0:
-            data = data.get()
+        if not os.path.exists(f'{parameters.projectPath}/Wavelets/{pathlib.Path(projectionFile).stem}-wavelets.mat'):
+            data, f = mm_findWavelets(projections, numModes, parameters)
+        else:
+            print("\n Loading wavelets")
+            # projections = np.array(loadmat(projectionFile, variable_names=['projections'])['projections'])
+            with h5py.File(f'{parameters.projectPath}/Wavelets/{pathlib.Path(projectionFile).stem}-wavelets.mat', 'r') as f:
+                data = f['wavelets'][:]
+                data[~np.isfinite(data)] = 1e-12
+                data[data == 0] = 1e-12
+                f = "tmp"
+        print("\n Loaded wavelets")
+        # data, f = mm_findWavelets(projections, numModes, parameters)
+        # if parameters.useGPU >= 0:
+        #     data = data.get()
     else:
         print('Using projections for tSNE. No wavelet decomposition.')
         f = 0

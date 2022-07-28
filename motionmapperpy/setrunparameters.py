@@ -14,12 +14,15 @@ def setRunParameters(parameters=None):
 
     """# %%%%%%%% General Parameters %%%%%%%%"""
 
-    # %number of processors to use in parallel code
-    numProcessors = 12
+    projectPath = "mmpy_lts_3h"
 
-    useGPU = -1
+    # %number of processors to use in parallel code
+    numProcessors = 128
+
+    useGPU = 0
 
     method = 'TSNE' # or 'UMAP'
+
 
 
     """%%%%%%%% Wavelet Parameters %%%%%%%%"""
@@ -47,28 +50,28 @@ def setRunParameters(parameters=None):
     tSNE_method = 'barnes_hut'
 
     # %2^H (H is the transition entropy)
-    perplexity = 32
+    perplexity = 50
 
     # %embedding batchsize
-    embedding_batchSize = 20000
+    embedding_batchSize = 64000
 
     # %maximum number of iterations for the Nelder-Mead algorithm
-    maxOptimIter = 100
+    maxOptimIter = 10000
 
     # %number of points in the training set
-    trainingSetSize = 35000
+    trainingSetSize = 64000
 
     # %number of neigbors to use when re-embedding
-    maxNeighbors = 200
+    maxNeighbors = 500
 
     # %local neighborhood definition in training set creation
     kdNeighbors = 5
 
     # %t-SNE training set perplexity
-    training_perplexity = 20
+    training_perplexity = 50
 
     # %number of points to evaluate in each training set file
-    training_numPoints = 10000
+    training_numPoints = 8000
 
     # %minimum training set template length
     minTemplateLength = 1
@@ -90,13 +93,12 @@ def setRunParameters(parameters=None):
     umap_output_dims = 2
 
     # Number of training epochs.
-    n_training_epochs = 1000
+    n_training_epochs = 10000
 
     # Embedding rescaling parameter.
     rescale_max = 100
 
     """%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%"""
-
 
     if not 'numProcessors' in parameters.keys():
         parameters.numProcessors = numProcessors
@@ -178,5 +180,8 @@ def setRunParameters(parameters=None):
 
     if not 'method' in parameters.keys():
         parameters.method = method
+
+    if not 'projectPath' in parameters.keys():
+        parameters.projectPath = projectPath
 
     return parameters

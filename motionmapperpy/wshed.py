@@ -15,10 +15,10 @@ bmapcmap = gencmap()
 def wshedTransform(zValues, min_regions, sigma, tsnefolder, saveplot=True):
     print('Starting watershed transform...')
 
-    bounds, xx, density = findPointDensity(zValues, sigma, 610,
+    bounds, xx, density = findPointDensity(zValues, sigma, 1000,
                                                    rangeVals=[-np.abs(zValues).max() - 15, np.abs(zValues).max() + 15])
     wshed = watershed(-density, connectivity=10)
-    wshed[density < 1e-5] = 0
+
     numRegs = len(np.unique(wshed)) - 1
 
     if numRegs < min_regions - 10:
@@ -27,7 +27,7 @@ def wshedTransform(zValues, min_regions, sigma, tsnefolder, saveplot=True):
 
     while numRegs > min_regions:
         sigma += 0.05
-        _, xx, density = findPointDensity(zValues, sigma, 610,
+        _, xx, density = findPointDensity(zValues, sigma, 1000,
                                                   rangeVals=[-np.abs(zValues).max() - 15, np.abs(zValues).max() + 15])
         wshed = watershed(-density, connectivity=10)
         wshed[density < 1e-5] = 0
@@ -163,6 +163,7 @@ def findWatershedRegions(parameters, minimum_regions=150, startsigma=0.1, pThres
     ampVels = []
     for pi, projfile in enumerate(projfiles):
         fname = projfile.split('/')[-1].split('.')[0]
+        print(f'Processing {projfile}')
         zValNames.append(fname)
         print('%i/%i Loading embedding for %s %0.02f seconds.' % (pi + 1, len(projfiles), fname, time.time() - t1))
         if parameters.method == 'TSNE':
@@ -170,6 +171,9 @@ def findWatershedRegions(parameters, minimum_regions=150, startsigma=0.1, pThres
         else:
             zValident = 'uVals'
         with h5py.File(projectionfolder + fname + '_%s.mat'%zValident, 'r') as h5file:
+            shape = h5file['zValues'][:].T.shape
+            print(f'shape of zVals: {shape}')
+            print(h5file['zValues'][:].T[0:5,:])
             zValues.append(h5file['zValues'][:].T)
         ampVels.append(np.concatenate(([0], np.linalg.norm(np.diff(zValues[-1], axis=0), axis=1)), axis=0))
         # with h5py.File(projectionfolder + fname + '_zAmps_vel.mat', 'r') as h5file:

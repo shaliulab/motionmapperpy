@@ -31,6 +31,7 @@ def findWavelets(projections, pcaModes, omega0, numPeriods, samplingFreq, maxF, 
     if useGPU>=0:
         try:
             import cupy as np
+            import numpy as npp
         except ModuleNotFoundError as E:
             warnings.warn("Trying to use GPU but cupy is not installed. Install cupy or set parameters.useGPU = -1. "
                   "https://docs.cupy.dev/en/stable/install.html")
@@ -56,9 +57,9 @@ def findWavelets(projections, pcaModes, omega0, numPeriods, samplingFreq, maxF, 
     N = projections.shape[0]
 
     if useGPU>=0:
-        amplitudes = np.zeros((numPeriods*pcaModes,N))
+        amplitudes = npp.zeros((numPeriods*pcaModes,N))
         for i in range(pcaModes):
-            amplitudes[i*numPeriods:(i+1)*numPeriods] = fastWavelet_morlet_convolution_parallel(i, projections[:, i], f, omega0, dt, useGPU)
+            amplitudes[i*numPeriods:(i+1)*numPeriods] = fastWavelet_morlet_convolution_parallel(i, projections[:, i], f, omega0, dt, useGPU).get()
     else:
         try:
             pool = mp.Pool(numProcessors)
@@ -114,4 +115,5 @@ def fastWavelet_morlet_convolution_parallel(modeno, x, f, omega0, dt, useGPU):
         amp[i, :] = np.abs(q) * (np.pi ** -0.25) * np.exp(0.25 * (omega0 - np.sqrt(omega0 ** 2 + 2)) ** 2) / np.sqrt(
             2 * scales[i])
     # print('Mode %i done.'%(modeno))
+    del xHat
     return amp
