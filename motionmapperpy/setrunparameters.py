@@ -14,7 +14,7 @@ def setRunParameters(parameters=None):
 
     """# %%%%%%%% General Parameters %%%%%%%%"""
 
-    projectPath = "mmpy_lts_3h"
+    projectPath = "mmpy_lts_3h_short"
 
     # %number of processors to use in parallel code
     numProcessors = 128
@@ -50,28 +50,28 @@ def setRunParameters(parameters=None):
     tSNE_method = 'barnes_hut'
 
     # %2^H (H is the transition entropy)
-    perplexity = 50
+    perplexity = 32
 
     # %embedding batchsize
-    embedding_batchSize = 64000
+    embedding_batchSize = 32000
 
     # %maximum number of iterations for the Nelder-Mead algorithm
-    maxOptimIter = 10000
+    maxOptimIter = 500
 
     # %number of points in the training set
-    trainingSetSize = 64000
+    trainingSetSize = 35000
 
     # %number of neigbors to use when re-embedding
-    maxNeighbors = 500
+    maxNeighbors = 200
 
     # %local neighborhood definition in training set creation
     kdNeighbors = 5
 
     # %t-SNE training set perplexity
-    training_perplexity = 50
+    training_perplexity = 20
 
     # %number of points to evaluate in each training set file
-    training_numPoints = 8000
+    training_numPoints = 10000
 
     # %minimum training set template length
     minTemplateLength = 1
@@ -93,7 +93,7 @@ def setRunParameters(parameters=None):
     umap_output_dims = 2
 
     # Number of training epochs.
-    n_training_epochs = 10000
+    n_training_epochs = 100
 
     # Embedding rescaling parameter.
     rescale_max = 100
