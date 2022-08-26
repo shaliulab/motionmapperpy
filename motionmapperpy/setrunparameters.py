@@ -1,5 +1,6 @@
 from easydict import EasyDict as edict
 
+
 def setRunParameters(parameters=None):
     """
     Get parameter dictionary for running motionmapperpy.
@@ -11,19 +12,16 @@ def setRunParameters(parameters=None):
     else:
         parameters = edict()
 
-
     """# %%%%%%%% General Parameters %%%%%%%%"""
 
-    projectPath = "mmpy_lts_3h_short"
+    projectPath = "mmpy_lts_1d_subset"
 
     # %number of processors to use in parallel code
     numProcessors = 128
 
     useGPU = 0
 
-    method = 'TSNE' # or 'UMAP'
-
-
+    method = "TSNE"  # or 'UMAP'
 
     """%%%%%%%% Wavelet Parameters %%%%%%%%"""
     # %Whether to do wavelet decomposition, if False then use normalized projections for tSNE embedding.
@@ -44,22 +42,21 @@ def setRunParameters(parameters=None):
     # maximum frequency for wavelet transform (Hz)
     maxF = 50
 
-
     """%%%%%%%% t-SNE Parameters %%%%%%%%"""
     # Global tSNE method - 'barnes_hut' or 'exact'
-    tSNE_method = 'barnes_hut'
+    tSNE_method = "barnes_hut"
 
     # %2^H (H is the transition entropy)
     perplexity = 32
 
     # %embedding batchsize
-    embedding_batchSize = 32000
+    embedding_batchSize = 128000
 
     # %maximum number of iterations for the Nelder-Mead algorithm
     maxOptimIter = 500
 
     # %number of points in the training set
-    trainingSetSize = 35000
+    trainingSetSize = 64000
 
     # %number of neigbors to use when re-embedding
     maxNeighbors = 200
@@ -71,7 +68,7 @@ def setRunParameters(parameters=None):
     training_perplexity = 20
 
     # %number of points to evaluate in each training set file
-    training_numPoints = 10000
+    training_numPoints = 32000
 
     # %minimum training set template length
     minTemplateLength = 1
@@ -100,88 +97,85 @@ def setRunParameters(parameters=None):
 
     """%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%"""
 
-    if not 'numProcessors' in parameters.keys():
+    if not "numProcessors" in parameters.keys():
         parameters.numProcessors = numProcessors
 
-    if not 'numPeriods' in parameters.keys():
+    if not "numPeriods" in parameters.keys():
         parameters.numPeriods = numPeriods
 
-    if not 'omega0' in parameters.keys():
+    if not "omega0" in parameters.keys():
         parameters.omega0 = omega0
 
-
-
-    if not 'samplingFreq' in parameters.keys():
+    if not "samplingFreq" in parameters.keys():
         parameters.samplingFreq = samplingFreq
 
-    if not 'minF' in parameters.keys():
+    if not "minF" in parameters.keys():
         parameters.minF = minF
 
-    if not 'maxF' in parameters.keys():
+    if not "maxF" in parameters.keys():
         parameters.maxF = maxF
 
-
-    if not 'tSNE_method' in parameters.keys():
+    if not "tSNE_method" in parameters.keys():
         parameters.tSNE_method = tSNE_method
 
-    if not 'perplexity' in parameters.keys():
+    if not "perplexity" in parameters.keys():
         parameters.perplexity = perplexity
 
-    if not 'embedding_batchSize' in parameters.keys():
+    if not "embedding_batchSize" in parameters.keys():
         parameters.embedding_batchSize = embedding_batchSize
 
-    if not 'maxOptimIter' in parameters.keys():
+    if not "maxOptimIter" in parameters.keys():
         parameters.maxOptimIter = maxOptimIter
 
-    if not 'trainingSetSize' in parameters.keys():
+    if not "trainingSetSize" in parameters.keys():
         parameters.trainingSetSize = trainingSetSize
 
-    if not 'maxNeighbors' in parameters.keys():
+    if not "maxNeighbors" in parameters.keys():
         parameters.maxNeighbors = maxNeighbors
 
-    if not 'kdNeighbors' in parameters.keys():
+    if not "kdNeighbors" in parameters.keys():
         parameters.kdNeighbors = kdNeighbors
 
-    if not 'training_perplexity' in parameters.keys():
+    if not "training_perplexity" in parameters.keys():
         parameters.training_perplexity = training_perplexity
 
-    if not 'training_numPoints' in parameters.keys():
+    if not "training_numPoints" in parameters.keys():
         parameters.training_numPoints = training_numPoints
 
-    if not 'minTemplateLength' in parameters.keys():
+    if not "minTemplateLength" in parameters.keys():
         parameters.minTemplateLength = minTemplateLength
 
-    if not 'waveletDecomp' in parameters.keys():
+    if not "waveletDecomp" in parameters.keys():
         parameters.waveletDecomp = waveletDecomp
 
-    if not 'useGPU' in parameters.keys():
+    if not "useGPU" in parameters.keys():
         parameters.useGPU = useGPU
 
-    if not 'n_neighbors' in parameters.keys():
+    if not "n_neighbors" in parameters.keys():
         parameters.n_neighbors = n_neighbors
 
-    if not 'train_negative_sample_rate' in parameters.keys():
+    if not "train_negative_sample_rate" in parameters.keys():
         parameters.train_negative_sample_rate = train_negative_sample_rate
 
-    if not 'embed_negative_sample_rate' in parameters.keys():
+    if not "embed_negative_sample_rate" in parameters.keys():
         parameters.embed_negative_sample_rate = embed_negative_sample_rate
 
-    if not 'min_dist' in parameters.keys():
+    if not "min_dist" in parameters.keys():
         parameters.min_dist = min_dist
 
-    if not 'umap_output_dims' in parameters.keys():
+    if not "umap_output_dims" in parameters.keys():
         parameters.umap_output_dims = umap_output_dims
 
-    if not 'n_training_epochs' in parameters.keys():
+    if not "n_training_epochs" in parameters.keys():
         parameters.n_training_epochs = n_training_epochs
 
-    if not 'rescale_max' in parameters.keys():
+    if not "rescale_max" in parameters.keys():
         parameters.rescale_max = rescale_max
 
-    if not 'method' in parameters.keys():
+    if not "method" in parameters.keys():
         parameters.method = method
 
-    if not 'projectPath' in parameters.keys():
+    if not "projectPath" in parameters.keys():
         parameters.projectPath = projectPath
 
     return parameters

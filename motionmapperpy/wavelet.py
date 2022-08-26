@@ -8,7 +8,19 @@ kanishkbjain@gmail.com
 
 import time
 import warnings
-def findWavelets(projections, pcaModes, omega0, numPeriods, samplingFreq, maxF, minF, numProcessors, useGPU):
+
+
+def findWavelets(
+    projections,
+    pcaModes,
+    omega0,
+    numPeriods,
+    samplingFreq,
+    maxF,
+    minF,
+    numProcessors,
+    useGPU,
+):
     """
     findWavelets finds the wavelet transforms resulting from a time series.
     :param projections: N x d array of projection values.
@@ -26,25 +38,29 @@ def findWavelets(projections, pcaModes, omega0, numPeriods, samplingFreq, maxF, 
 
     """
     t1 = time.time()
-    print('\t Calculating wavelets, clock starting.')
+    print("\t Calculating wavelets, clock starting.")
 
-    if useGPU>=0:
+    if useGPU >= 0:
         try:
             import cupy as np
             import numpy as npp
         except ModuleNotFoundError as E:
-            warnings.warn("Trying to use GPU but cupy is not installed. Install cupy or set parameters.useGPU = -1. "
-                  "https://docs.cupy.dev/en/stable/install.html")
+            warnings.warn(
+                "Trying to use GPU but cupy is not installed. Install cupy or set parameters.useGPU = -1. "
+                "https://docs.cupy.dev/en/stable/install.html"
+            )
             raise E
 
         np.cuda.Device(useGPU).use()
-        print('\t Using GPU #%i'%useGPU)
+        print("\t Using GPU #%i" % useGPU)
     else:
-        import numpy as np
         import multiprocessing as mp
-        if numProcessors<0:
+
+        import numpy as np
+
+        if numProcessors < 0:
             numProcessors = mp.cpu_count()
-        print('\t Using #%i CPUs.' % numProcessors)
+        print("\t Using #%i CPUs." % numProcessors)
 
     projections = np.array(projections)
     t1 = time.time()
@@ -52,19 +68,34 @@ def findWavelets(projections, pcaModes, omega0, numPeriods, samplingFreq, maxF, 
     dt = 1.0 / samplingFreq
     minT = 1.0 / maxF
     maxT = 1.0 / minF
-    Ts = minT * (2 ** ((np.arange(numPeriods) * np.log(maxT / minT)) / (np.log(2) * (numPeriods - 1))))
+    Ts = minT * (
+        2
+        ** (
+            (np.arange(numPeriods) * np.log(maxT / minT))
+            / (np.log(2) * (numPeriods - 1))
+        )
+    )
     f = (1.0 / Ts)[::-1]
     N = projections.shape[0]
 
-    if useGPU>=0:
-        amplitudes = npp.zeros((numPeriods*pcaModes,N))
+    if useGPU >= 0:
+        amplitudes = npp.zeros((numPeriods * pcaModes, N))
         for i in range(pcaModes):
-            amplitudes[i*numPeriods:(i+1)*numPeriods] = fastWavelet_morlet_convolution_parallel(i, projections[:, i], f, omega0, dt, useGPU).get()
+            amplitudes[
+                i * numPeriods : (i + 1) * numPeriods
+            ] = fastWavelet_morlet_convolution_parallel(
+                i, projections[:, i], f, omega0, dt, useGPU
+            ).get()
     else:
         try:
             pool = mp.Pool(numProcessors)
-            amplitudes = pool.starmap(fastWavelet_morlet_convolution_parallel,
-                                      [(i, projections[:, i], f, omega0, dt, useGPU) for i in range(pcaModes)])
+            amplitudes = pool.starmap(
+                fastWavelet_morlet_convolution_parallel,
+                [
+                    (i, projections[:, i], f, omega0, dt, useGPU)
+                    for i in range(pcaModes)
+                ],
+            )
             amplitudes = np.concatenate(amplitudes, 0)
             pool.close()
             pool.join()
@@ -72,13 +103,14 @@ def findWavelets(projections, pcaModes, omega0, numPeriods, samplingFreq, maxF, 
             pool.close()
             pool.join()
             raise E
-    print('\t Done at %0.02f seconds.'%(time.time()-t1))
+    print("\t Done at %0.02f seconds." % (time.time() - t1))
     return amplitudes.T, f
 
 
 def fastWavelet_morlet_convolution_parallel(modeno, x, f, omega0, dt, useGPU):
-    if useGPU>=0:
+    if useGPU >= 0:
         import cupy as np
+
         np.cuda.Device(useGPU).use()
     else:
         import numpy as np
@@ -96,7 +128,7 @@ def fastWavelet_morlet_convolution_parallel(modeno, x, f, omega0, dt, useGPU):
     x = np.concatenate([np.zeros(int(N / 2)), x, np.zeros(int(N / 2))], axis=0)
     M = N
     N = len(x)
-    scales = (omega0 + np.sqrt(2 + omega0 ** 2)) / (4 * np.pi * f)
+    scales = (omega0 + np.sqrt(2 + omega0**2)) / (4 * np.pi * f)
     Omegavals = 2 * np.pi * np.arange(-N / 2, N / 2) / (N * dt)
 
     xHat = np.fft.fft(x)
@@ -112,8 +144,12 @@ def fastWavelet_morlet_convolution_parallel(modeno, x, f, omega0, dt, useGPU):
         q = np.fft.ifft(m * xHat) * np.sqrt(scales[i])
 
         q = q[idx]
-        amp[i, :] = np.abs(q) * (np.pi ** -0.25) * np.exp(0.25 * (omega0 - np.sqrt(omega0 ** 2 + 2)) ** 2) / np.sqrt(
-            2 * scales[i])
+        amp[i, :] = (
+            np.abs(q)
+            * (np.pi**-0.25)
+            * np.exp(0.25 * (omega0 - np.sqrt(omega0**2 + 2)) ** 2)
+            / np.sqrt(2 * scales[i])
+        )
     # print('Mode %i done.'%(modeno))
     del xHat
     return amp

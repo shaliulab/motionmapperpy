@@ -1,9 +1,10 @@
 import setuptools
+
 with open("README.md", "r") as fh:
     long_description = fh.read()
 setuptools.setup(
-    name='motionmapperpy',
-    version='1.0',
+    name="motionmapperpy",
+    version="1.0",
     author="Kanishk Jain",
     author_email="kanishkbjain@gmail.com",
     maintainer="Kanishk Jain",
@@ -22,14 +23,13 @@ setuptools.setup(
         "scikit-learn",
         "scikit-image",
         "easydict",
-        "umap-learn"
+        "umap-learn",
     ],
     packages=setuptools.find_packages(),
     classifiers=[
-    "Programming Language :: Python :: 3",
-    "Intended Audience :: Science/Research"
-    "Operating System :: OS Independent",
-    "Development Status :: 4 - Beta",
-    ""
+        "Programming Language :: Python :: 3",
+        "Intended Audience :: Science/Research" "Operating System :: OS Independent",
+        "Development Status :: 4 - Beta",
+        "",
     ],
-    )
+)
