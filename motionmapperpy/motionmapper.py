@@ -363,10 +363,11 @@ def file_embeddingSubSampling(projectionFile, parameters):
 from tqdm import tqdm
 
 
-def get_wavelets(projectionFiles, parameters):
-    L = len(projectionFiles)
-    for i in tqdm(range(L)):
-        calc_and_write_wavelets(projectionFiles[i], parameters)
+def get_wavelets(projectionFiles, parameters, i):
+    # L = len(projectionFiles)
+    # for i in tqdm(range(L)):
+    print(f"Processing {projectionFiles[i]}")
+    calc_and_write_wavelets(projectionFiles[i], parameters)
 
 
 def calc_and_write_wavelets(projectionFile, parameters):
