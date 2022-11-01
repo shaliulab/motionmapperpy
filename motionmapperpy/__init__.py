@@ -10,3 +10,5 @@ from .motionmapper import (
 from .setrunparameters import setRunParameters
 from .wavelet import findWavelets
 from .wshed import findWatershedRegions
+from .demoutils import makeregionvideo_flies, getTransitions, makeTransitionMatrix, doTheShannonShuffle, \
+    plotLaggedEigenvalues, makeregionvideos_mice

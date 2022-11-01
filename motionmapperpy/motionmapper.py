@@ -115,16 +115,9 @@ def run_tSne(data, parameters=None):
         D[~np.isfinite(D)] = 0.0
         D = np.square(D)
 
-        print("Computing t-SNE")
-        tsne = TSNE(
-            perplexity=parameters.perplexity,
-            learning_rate="auto",
-            metric="precomputed",
-            verbose=1,
-            n_jobs=-1,
-            method=parameters.tSNE_method,
-            n_iter=parameters.maxOptimIter,
-        )
+        print('Computing t-SNE with %s method'%parameters.tSNE_method)
+        tsne = TSNE(perplexity=parameters.perplexity, metric='precomputed', verbose=1, n_jobs=-1,
+                    method=parameters.tSNE_method)
         yData = tsne.fit_transform(D)
     else:
         tsne = TSNE(
