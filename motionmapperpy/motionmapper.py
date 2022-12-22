@@ -23,6 +23,7 @@ from skimage.segmentation import watershed
 from sklearn.manifold import TSNE
 from sklearn.neighbors import NearestNeighbors
 from umap import UMAP
+import numpy as np
 
 from .mmutils import findPointDensity, gencmap
 from .setrunparameters import setRunParameters
@@ -193,6 +194,7 @@ def findTemplatesFromData(
     ax.scatter(wbounds[0], wbounds[1], color="k", s=0.1)
     fig.savefig(projectionFile[:-4] + "_trainingtSNE.png")
     plt.close()
+    print(f"Saved training tSNE plot to {projectionFile[:-4]+'_trainingtSNE.png'}")
     ####################################################
 
     N = len(templates)
@@ -259,7 +261,7 @@ import pathlib
 
 def file_embeddingSubSampling(projectionFile, parameters):
     perplexity = parameters.training_perplexity
-    numPoints = parameters.training_numPoints
+    # numPoints = parameters.training_numPoints
 
     print("\t Loading Projections")
     # try:
@@ -267,50 +269,66 @@ def file_embeddingSubSampling(projectionFile, parameters):
     #         loadmat(projectionFile, variable_names=["projections"])["projections"]
     #     )
     # except:
-    with h5py.File(projectionFile, "r") as hfile:
-        projections_shape = hfile["projections"][:].T.shape
+
+    # with h5py.File(projectionFile, "r") as hfile:
+        # TODO: Don't deal with edge calls
+        # Example filename: 20220217-lts-cam1_day1_24hourvars-0-pcaModes.mat
+
+        # projections_shape = hfile["projections"][:].T.shape
     # projections = np.array(projections)
+    # edge_file = '../data/edge/' + '-'.join(pathlib.Path(projectionFile).stem.split('-')[:3]) + '_edge.mat'
+    # fly_num = int(pathlib.Path(projectionFile).stem.split('-')[3].split('_')[0])
+    # with h5py.File(edge_file, "r") as hfile:
+    #     edge_mask = np.append([False],hfile["edger"][:].T[:, fly_num].astype(bool))
+    #     print(f'projection file: {projectionFile}')
+    #     print(f'edge shape: {edge_mask.shape}')
+    #     print(f'Frac on edge: {np.sum(edge_mask)/projections_shape[0]}')
 
-    if projections_shape[0] < numPoints:
-        raise ValueError(
-            "Training number of points for miniTSNE is greater than # samples in some files. Please "
-            "adjust it to %i or lower" % (projections_shape[0])
-        )
+    # if projections_shape[0] < numPoints:
+    #     raise ValueError(
+    #         "Training number of points for miniTSNE is greater than # samples in some files. Please "
+    #         "adjust it to %i or lower" % (projections_shape[0])
+    #     )
 
-    N = projections_shape[0]
-    numModes = parameters.pcaModes
-    skipLength = np.floor(N / numPoints).astype(int)
-    if skipLength == 0:
-        skipLength = 1
-        numPoints = N
+    # N = projections_shape[0]
+    # numModes = parameters.pcaModes
+    # skipLength = np.floor(N / numPoints).astype(int)
+    # if skipLength == 0:
+    #     skipLength = 1
+    #     numPoints = N
 
-    print(f"Subsampling {N} points to {numPoints} points")
+    # print(f"Subsampling {N} points to {numPoints} points")
 
-    firstFrame = N % numPoints
+    # firstFrame = N % numPoints
 
     if parameters.waveletDecomp:
 
-        signalIdx = np.indices((projections_shape[0],))[0]
-        signalIdx = signalIdx[
-            firstFrame : int(firstFrame + (numPoints) * skipLength) : skipLength
-        ]
-        print("\t Calculating Wavelets")
-        print(
-            f"{parameters.projectPath}/Wavelets/{pathlib.Path(projectionFile).stem}-wavelets.mat"
-        )
-        if not os.path.exists(
-            f"{parameters.projectPath}/Wavelets/{pathlib.Path(projectionFile).stem}-wavelets.mat"
-        ):
-            data, _ = mm_findWavelets(projections, numModes, parameters)
-        else:
-            print("\n Loading wavelets")
-            # projections = np.array(loadmat(projectionFile, variable_names=['projections'])['projections'])
-            with h5py.File(
-                f"{parameters.projectPath}/Wavelets/{pathlib.Path(projectionFile).stem}-wavelets.mat",
-                "r",
-            ) as f:
-                data = f["wavelets"][signalIdx]
-            print("\n Loaded wavelets")
+        # signalIdx = np.indices((projections_shape[0],))[0]
+        # # Subset to remove edge calls
+        # signalIdx = signalIdx[[not mask_ele for mask_ele in edge_mask]]
+        # signalIdx = signalIdx[np.round(np.linspace(0, signalIdx.shape[0] - 1, numPoints)).astype(int)]
+        # # signalIdx = signalIdx[
+        # #     firstFrame : int(firstFrame + (numPoints) * skipLength) : skipLength
+        # # ]
+        # print("\t Calculating Wavelets")
+        # print(
+        #     f"{parameters.projectPath}/Wavelets/{pathlib.Path(projectionFile).stem}-wavelets.mat"
+        # )
+        # if not os.path.exists(
+        #     f"{parameters.projectPath}/Wavelets/{pathlib.Path(projectionFile).stem}-wavelets.mat"
+        # ):
+            # data, _ = mm_findWavelets(projections, numModes, parameters)
+        # else:
+        print("\n Loading wavelets")
+        # projections = np.array(loadmat(projectionFile, variable_names=['projections'])['projections'])
+        with h5py.File(
+            f"{parameters.projectPath}/Subsampled_wavelets/{pathlib.Path(projectionFile).stem}-subsampled-wavelets.mat",
+            "r",
+        ) as f:
+            data = f["signaldata"][:]#[signalIdx]
+            
+        print(f"Data shape: {data.shape}")
+        print("\n Loaded wavelets")
             # data = loadmat(f'{parameters.projectPath}/Wavelets/{pathlib.Path(projectionFile).stem}-wavelets.mat')
 
         print("\n Subsampled wavelets")
@@ -329,6 +347,7 @@ def file_embeddingSubSampling(projectionFile, parameters):
         # else:
         # print("MAKING IT WORK")
         signalData = data
+
 
     # else:
     #     print("Using projections for tSNE. No wavelet decomposition.")
@@ -350,7 +369,7 @@ def file_embeddingSubSampling(projectionFile, parameters):
         yData = run_UMAP(signalData, parameters, save_model=False)
     else:
         raise ValueError("Supported parameter.method are 'TSNE' or 'UMAP'")
-    return yData, signalData, signalIdx, signalAmps
+    return yData, signalData, np.arange(parameters.training_numPoints), signalAmps
 
 
 from tqdm import tqdm
@@ -375,7 +394,7 @@ def calc_and_write_wavelets(projectionFile, parameters):
         if not os.path.exists(
             f"{parameters.projectPath}/Wavelets/{pathlib.Path(projectionFile).stem}-wavelets.mat"
         ):
-            data, _ = mm_findWavelets(projections, parameters.pcaModes, parameters)
+            data, freqs = mm_findWavelets(projections, parameters.pcaModes, parameters)
             print(f"\n Saving wavelets: {data.shape}")
             with h5py.File(
                 f"{parameters.projectPath}/Wavelets/{pathlib.Path(projectionFile).stem}-wavelets.mat",
@@ -383,11 +402,12 @@ def calc_and_write_wavelets(projectionFile, parameters):
             ) as f:
                 print("No compression")
                 f.create_dataset("wavelets", data=data)
+                f.create_dataset("f", data=freqs)
 
 
 import natsort
 
-
+from tqdm import tqdm
 def runEmbeddingSubSampling(projectionDirectory, parameters):
     """
     runEmbeddingSubSampling generates a training set given a set of .mat files.
@@ -406,6 +426,7 @@ def runEmbeddingSubSampling(projectionDirectory, parameters):
     projectionFiles = natsort.natsorted(projectionFiles)
     N = parameters.trainingSetSize
     L = len(projectionFiles)
+    # L = 3
     numPerDataSet = round(N / L)
     numModes = parameters.pcaModes
     numPeriods = parameters.numPeriods
@@ -425,7 +446,7 @@ def runEmbeddingSubSampling(projectionDirectory, parameters):
     trainingSetAmps = np.zeros((numPerDataSet * L, 1))
     useIdx = np.ones((numPerDataSet * L), dtype="bool")
 
-    for i in range(L):
+    for i in tqdm(range(L)):
 
         print(
             "Finding training set contributions from data set %i/%i : \n%s"
@@ -879,3 +900,150 @@ def findEmbeddings(
     print("Embeddings found in %0.02f seconds." % (time.time() - t1))
 
     return zValues, outputStatistics
+
+def file_embeddingSubSampling_batch(projectionFile, parameters):
+    perplexity = parameters.training_perplexity
+    numPoints = parameters.training_numPoints
+
+
+    with h5py.File(projectionFile, "r") as hfile:
+        # TODO: Don't deal with edge calls
+        # Example filename: 20220217-lts-cam1_day1_24hourvars-0-pcaModes.mat
+
+        projections_shape = hfile["projections"][:].T.shape
+    # projections = np.array(projections)
+    edge_file = '../data/edge/' + '-'.join(pathlib.Path(projectionFile).stem.split('-')[:3]) + '_edge.mat'
+    fly_num = int(pathlib.Path(projectionFile).stem.split('-')[3].split('_')[0])
+    with h5py.File(edge_file, "r") as hfile:
+        edge_mask = np.append([False], hfile["edger"][:].T[:, fly_num].astype(bool))
+        print(f'projection file: {projectionFile}')
+        print(f'edge file: {edge_file}')
+
+        print(f"projections shape: {projections_shape}")
+        print(f'edge shape: {edge_mask.shape}')
+        edge_mask = edge_mask[:projections_shape[0]]
+        print(f'Frac on edge: {np.sum(edge_mask)/projections_shape[0]}')
+
+    if projections_shape[0] < numPoints:
+        raise ValueError(
+            "Training number of points for miniTSNE is greater than # samples in some files. Please "
+            "adjust it to %i or lower" % (projections_shape[0])
+        )
+
+    N = projections_shape[0]
+    skipLength = np.floor(N / numPoints).astype(int)
+    if skipLength == 0:
+        skipLength = 1
+        numPoints = N
+
+    print(f"Subsampling {N} points to {numPoints} points")
+
+
+    if parameters.waveletDecomp:
+
+        signalIdx = np.indices((projections_shape[0],))[0]
+        print(f"signalIdx shape: {signalIdx.shape}")
+        print(f"edge_mask shape: {edge_mask.shape}")
+        signalIdx = signalIdx[[not mask_ele for mask_ele in edge_mask]]
+        # Subset to remove edge calls
+        if signalIdx.shape[0] < numPoints:
+            print("Warning: Not enough points to sample. Using all points")
+            if skipLength == 0:
+                skipLength = 1
+                numPoints = signalIdx.shape[0]
+            print(f"Final signalIdx.shape: {signalIdx.shape}")
+        else:
+            print(f"Found {signalIdx.shape[0]} points to sample")
+            skipLength = np.floor(signalIdx.shape[0] / numPoints).astype(int)
+            signalIdx = signalIdx[
+                0 : int(0 + (numPoints) * skipLength) : skipLength
+            ]
+        print(f"Final signalIdx: {signalIdx[0:10]}")
+        print(f"Final signalIdx.shape: {signalIdx.shape}")
+        print("\t Calculating Wavelets")
+        print(
+            f"{parameters.projectPath}/Wavelets/{pathlib.Path(projectionFile).stem}-wavelets.mat"
+        )
+        print("\n Loading wavelets")
+        with h5py.File(
+            f"{parameters.projectPath}/Wavelets/{pathlib.Path(projectionFile).stem}-wavelets.mat",
+            "r",
+        ) as f:
+            data = f["wavelets"][sorted(signalIdx)]
+        print("\n Loaded wavelets")
+        with open("list_of_working_files.txt", "a") as myfile:
+            myfile.write(f"{projectionFile}\n")
+        with open("list_of_working_files_length.txt", "a") as myfile:
+            myfile.write(f"{signalIdx.shape[0]}\n")
+
+        print("\n Subsampled wavelets")
+        if not os.path.exists(
+            f"{parameters.projectPath}/Subsampled_wavelets/{pathlib.Path(projectionFile).stem}-subsampled-wavelets.mat"
+        ):
+            with h5py.File(
+                f"{parameters.projectPath}/Subsampled_wavelets/{pathlib.Path(projectionFile).stem}-subsampled-wavelets.mat",
+                "w",
+            ) as f:
+                f.create_dataset("signaldata", data=data, compression="lzf")
+        else:
+            print("File already exists")
+    return
+
+
+def runEmbeddingSubSampling_batch(projectionDirectory, parameters, i):
+    """
+    runEmbeddingSubSampling generates a training set given a set of .mat files.
+
+    :param projectionDirectory: directory path containing .mat projection files.
+    Each of these files should contain an N x pcaModes variable, 'projections'.
+    :param parameters: motionmapperpy Parameters dictionary.
+    :return:
+        trainingSetData -> normalized wavelet training set
+                           (N x (pcaModes*numPeriods) )
+        trainingSetAmps -> Nx1 array of training set wavelet amplitudes
+        projectionFiles -> list of files in 'projectionDirectory'
+    """
+    parameters = setRunParameters(parameters)
+    projectionFiles = glob.glob(projectionDirectory + "/*pcaModes.mat")
+    projectionFiles = natsort.natsorted(projectionFiles)
+
+
+    file_embeddingSubSampling_batch(
+        projectionFiles[i], parameters
+    )
+
+def subsampled_tsne_from_projections_batch(parameters, results_directory,i):
+    """
+    Wrapper function for training set subsampling and mapping.
+    """
+    projection_directory = results_directory + "/Projections/"
+    if parameters.method == "TSNE":
+        if parameters.waveletDecomp:
+            tsne_directory = results_directory + "/TSNE/"
+        else:
+            tsne_directory = results_directory + "/TSNE_Projections/"
+
+        parameters.tsne_directory = tsne_directory
+
+        parameters.tsne_readout = 50
+
+        tSNE_method_old = parameters.tSNE_method
+        if tSNE_method_old != "barnes_hut":
+            print(
+                "Setting tsne method to barnes_hut while subsampling for training set (for speedup)..."
+            )
+            parameters.tSNE_method = "barnes_hut"
+
+    elif parameters.method == "UMAP":
+        tsne_directory = results_directory + "/UMAP/"
+        if not parameters.waveletDecomp:
+            raise ValueError("Wavelet decomposition needed to run UMAP implementation.")
+    else:
+        raise ValueError("Supported parameter.method are 'TSNE' or 'UMAP'")
+
+    print("Finding Training Set")
+    # if not os.path.exists(tsne_directory + "training_data.mat"):
+    runEmbeddingSubSampling_batch(
+        projection_directory, parameters, i
+    )
+

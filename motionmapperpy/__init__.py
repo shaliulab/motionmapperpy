@@ -6,6 +6,7 @@ from .motionmapper import (
     run_UMAP,
     runEmbeddingSubSampling,
     subsampled_tsne_from_projections,
+    subsampled_tsne_from_projections_batch
 )
 from .setrunparameters import setRunParameters
 from .wavelet import findWavelets

@@ -6,21 +6,23 @@ import hdf5storage
 import time
 from skimage.segmentation import watershed
 from skimage.filters import roberts
+from matplotlib import pyplot as plt
 
 from sklearn.mixture import GaussianMixture
 
 from .mmutils import *
-
+from datetime import datetime
 bmapcmap = gencmap()
 
 
 def wshedTransform(zValues, min_regions, sigma, tsnefolder, saveplot=True):
+    date = datetime.now().strftime('%Y%m%d')
     print("Starting watershed transform...")
 
     bounds, xx, density = findPointDensity(
         zValues,
         sigma,
-        1000,
+        610,
         rangeVals=[-np.abs(zValues).max() - 15, np.abs(zValues).max() + 15],
     )
     wshed = watershed(-density, connectivity=10)
@@ -35,9 +37,10 @@ def wshedTransform(zValues, min_regions, sigma, tsnefolder, saveplot=True):
 
     while numRegs > min_regions:
         sigma += 0.05
-        _, xx, density = findPointDensity(zValues, sigma, 611,
-                                                  rangeVals=[-np.abs(zValues).max() - 15, np.abs(zValues).max() + 15])
+        _, xx, density = findPointDensity(zValues, sigma, 611, rangeVals=[-np.abs(zValues).max() - 15, np.abs(zValues).max() + 15])
         wshed = watershed(-density, connectivity=10)
+        
+        # TODO: Adjust to reasonable threshold
         wshed[density < 1e-5] = 0
 
         numRegs = len(np.unique(wshed)) - 1
@@ -70,14 +73,14 @@ def wshedTransform(zValues, min_regions, sigma, tsnefolder, saveplot=True):
         ax.imshow(density, origin="lower", cmap=bmapcmap)
         ax.scatter(wbounds[0], wbounds[1], color="k", s=0.1)
         ax.axis("off")
-
-        fig.savefig(tsnefolder + "zWshed%i.png" % numRegs)
+        fig.savefig(f"{tsnefolder}{date}_sigma{str(round(sigma,3)).replace('.','_')}_regions{numRegs}_zWshed.png")
         plt.close()
         plt.switch_backend(bend)
     return wshed, wbounds, sigma, xx, density
 
 
-def velGMM(ampV, parameters, projectPath, saveplot=True):
+def velGMM(ampV, parameters, projectPath, saveplot=True, minimum_regions=50):
+    date = datetime.now().strftime('%Y%m%d')
     if parameters.method == "TSNE":
         if parameters.waveletDecomp:
             tsnefolder = projectPath + "/TSNE/"
@@ -118,9 +121,8 @@ def velGMM(ampV, parameters, projectPath, saveplot=True):
         ax.legend()
         ax.set_xlabel(r"$log_{10}$ Velocity")
         ax.set_ylabel("PDF")
-
         fig.savefig(
-            tsnefolder + "zVelocity.png",
+            f"{tsnefolder}{date}_sigma{str(round(sigma,3)).replace('.','_')}_minregions{minimum_regions}_zVelocity.png"
         )
         plt.close()
         plt.switch_backend(bend)
@@ -166,6 +168,7 @@ def makeGroupsAndSegments(watershedRegions, zValLens, min_length=10, max_length=
 
 def findWatershedRegions(parameters, minimum_regions=150, startsigma=0.1, pThreshold=None,saveplot=True, endident = '*_pcaModes.mat',
                          min_length_videos=10):
+    date = datetime.now().strftime('%Y%m%d')
     projectionfolder = parameters.projectPath + '/Projections/'
     if parameters.method == 'TSNE':
         if parameters.waveletDecomp:
@@ -184,6 +187,10 @@ def findWatershedRegions(parameters, minimum_regions=150, startsigma=0.1, pThres
 
     zValues = []
     projfiles = glob.glob(projectionfolder + "/" + endident)
+    # projfiles = glob.glob(projectionfolder + "/" + "*_zVals.mat")
+    # projfiles = [f.split("_zVals.mat")[0] + ".mat" for f in projfiles][0:10]
+    # projfiles = ["/Genomics/ayroleslab2/scott/git/lts-manuscript/analysis/20221208_mmpy_lts_all_filtered/Projections/20220312-lts-cam3_day4_24hourvars-2-pcaModes_zVals.mat"]
+    # projfiles = ["/Genomics/ayroleslab2/scott/git/lts-manuscript/analysis/20221208_mmpy_lts_all_filtered/Projections/20220217-lts-cam1_day1_24hourvars-0-pcaModes.mat"]
     t1 = time.time()
 
     zValNames = []
@@ -234,7 +241,7 @@ def findWatershedRegions(parameters, minimum_regions=150, startsigma=0.1, pThres
     if parameters.method == "TSNE":
         print("Calculating velocity distributions...")
         ampVels, pRest = velGMM(
-            ampVels, parameters, parameters.projectPath, saveplot=saveplot
+            ampVels, parameters, parameters.projectPath, saveplot=saveplot, minimum_regions=minimum_regions
         )
 
         outdict = {
@@ -254,7 +261,7 @@ def findWatershedRegions(parameters, minimum_regions=150, startsigma=0.1, pThres
             data=outdict,
             path="/",
             truncate_existing=True,
-            filename=tsnefolder + "zVals_wShed_groups.mat",
+            filename=f"{tsnefolder}{date}_sigma{str(round(sigma,3)).replace('.','_')}_minregions{minimum_regions}_zVals_wShed_groups.mat",
             store_python_metadata=False,
             matlab_compatible=True,
         )
@@ -287,7 +294,7 @@ def findWatershedRegions(parameters, minimum_regions=150, startsigma=0.1, pThres
         data=outdict,
         path="/",
         truncate_existing=True,
-        filename=tsnefolder + "zVals_wShed_groups.mat",
+        filename=f"{tsnefolder}{date}_sigma{str(round(sigma,3)).replace('.','_')}_minregions{minimum_regions}_zVals_wShed_groups.mat",
         store_python_metadata=False,
         matlab_compatible=True,
     )
@@ -298,9 +305,9 @@ def findWatershedRegions(parameters, minimum_regions=150, startsigma=0.1, pThres
                'density': density, 'LL': LL, 'watershedRegions': watershedRegions, 'v': ampVels, 'pRest': pRest,
                'wbounds': wbounds, 'groups': groups}
     hdf5storage.write(data=outdict, path='/', truncate_existing=True,
-                      filename=tsnefolder + 'zVals_wShed_groups.mat', store_python_metadata=False,
+                      filename=f"{tsnefolder}{date}_sigma{str(round(sigma,3)).replace('.','_')}_minregions{minimum_regions}_zVals_wShed_groups_finalsave.mat", store_python_metadata=False,
                       matlab_compatible=True)
 
-    print('All data saved in %s.'%(tsnefolder.split('/')[-2]+'/zVals_wShed_groups.mat'))
+    print('All data saved.')
 
 

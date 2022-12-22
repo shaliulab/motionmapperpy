@@ -14,13 +14,15 @@ def setRunParameters(parameters=None):
 
     """# %%%%%%%% General Parameters %%%%%%%%"""
 
-    projectPath = "mmpy_lts_1d"
+    projectPath = "20221220_mmpy_lts_all_filtered"
+    # projectPath = "20221208_mmpy_lts_all_filtered"
 
     # %number of processors to use in parallel code
     numProcessors = 16
 
     useGPU = -1  # -1 for CPU, 0 for first GPU, 1 for second GPU, etc.
-# naps-track --slp-path 1h_example.slp --h5-path 1min_example.analysis.h5 --video-path 20220823-cut-to-1200to1300_libx264.mp4 --start-frame 0 --end-frame 1199 --aruco-marker-set DICT_5X5_50  --output-path example_output.analysis.h5 --aruco-error-correction-rate 1  --aruco-adaptive-thresh-constant 3 --aruco-adaptive-thresh-win-size-max 30 --aruco-adaptive-thresh-win-size-step 3 --aruco-perspective-rm-ignored-margin 0.13 --aruco-adaptive-thresh-win-size-min 3 --half-rolling-window-size 50 --tag-node 0
+
+    # naps-track --slp-path 1h_example.slp --h5-path 1min_example.analysis.h5 --video-path 20220823-cut-to-1200to1300_libx264.mp4 --start-frame 0 --end-frame 1199 --aruco-marker-set DICT_5X5_50  --output-path example_output.analysis.h5 --aruco-error-correction-rate 1  --aruco-adaptive-thresh-constant 3 --aruco-adaptive-thresh-win-size-max 30 --aruco-adaptive-thresh-win-size-step 3 --aruco-perspective-rm-ignored-margin 0.13 --aruco-adaptive-thresh-win-size-min 3 --half-rolling-window-size 50 --tag-node 0
     method = "TSNE"  # or 'UMAP'
 
     """%%%%%%%% Wavelet Parameters %%%%%%%%"""
@@ -56,7 +58,7 @@ def setRunParameters(parameters=None):
     maxOptimIter = 500
 
     # %number of points in the training set
-    trainingSetSize = 64000
+    trainingSetSize = 256000
 
     # %number of neigbors to use when re-embedding
     maxNeighbors = 200
