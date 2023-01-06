@@ -41,7 +41,7 @@ def wshedTransform(zValues, min_regions, sigma, tsnefolder, saveplot=True):
         wshed = watershed(-density, connectivity=10)
         
         # TODO: Adjust to reasonable threshold
-        wshed[density < 1e-5] = 0
+        wshed[density < 1e-12] = 0
 
         numRegs = len(np.unique(wshed)) - 1
         print('\t Sigma %0.2f, Regions %i' % (sigma, numRegs), end='\r')

@@ -13,8 +13,9 @@ def setRunParameters(parameters=None):
         parameters = edict()
 
     """# %%%%%%%% General Parameters %%%%%%%%"""
-
-    projectPath = "20221220_mmpy_lts_all_filtered"
+    # projectPath = "20230103_mmpy_lts_day1_pchip_nolimit_headprob_before"
+    projectPath = "20230105-mmpy-lts-day1"
+    # projectPath = "20230103_mmpy_lts_day1_pchip_nolimit_headprob_before_setnan0"
     # projectPath = "20221208_mmpy_lts_all_filtered"
 
     # %number of processors to use in parallel code
@@ -52,13 +53,13 @@ def setRunParameters(parameters=None):
     perplexity = 32
 
     # %embedding batchsize
-    embedding_batchSize = 128000
+    embedding_batchSize = 32000
 
     # %maximum number of iterations for the Nelder-Mead algorithm
     maxOptimIter = 500
 
     # %number of points in the training set
-    trainingSetSize = 256000
+    trainingSetSize = 5000
 
     # %number of neigbors to use when re-embedding
     maxNeighbors = 200
@@ -70,7 +71,7 @@ def setRunParameters(parameters=None):
     training_perplexity = 20
 
     # %number of points to evaluate in each training set file
-    training_numPoints = 32000
+    training_numPoints = 3000
 
     # %minimum training set template length
     minTemplateLength = 1

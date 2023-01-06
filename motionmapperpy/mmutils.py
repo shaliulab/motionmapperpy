@@ -40,6 +40,7 @@ def createProjectDirectory(pathToProject):
         "%s/Wavelets" % pathToProject,
         "%s/Subsampled_wavelets" % pathToProject,
         "%s/Ego" % pathToProject,
+        "%s/Processed_h5s" % pathToProject,
     ]
     for d in _dirs:
         if not os.path.exists(d):

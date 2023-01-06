@@ -96,7 +96,7 @@ def run_UMAP(data, parameters, save_model=True):
     return y
 
 
-def run_tSne(data, parameters=None):
+def run_tSne(data, parameters=None,filename = "none"):
     """
     run_tSne runs the t-SNE algorithm on an array of normalized wavelet amplitudes
     :param data: Nxd array of wavelet amplitudes (will normalize if unnormalized) containing N data points
@@ -115,12 +115,20 @@ def run_tSne(data, parameters=None):
         D, _ = findKLDivergences(data)
         D[~np.isfinite(D)] = 0.0
         D = np.square(D)
+        dist_mat_mean = np.mean(D)
+        print(f"Distance matrix shape: {D.shape}")
+        print(f"Distance matrix mean: {dist_mat_mean}")
+        if dist_mat_mean < 0.00001:
+            print("Distance matrix mean is too small. Adding to bad file list.")
+            with open("list_of_bad_files.txt", "a") as txt_file:
+                txt_file.write(f"{filename} \n")
 
-        print('Computing t-SNE with %s method'%parameters.tSNE_method)
+        print('Computing t-SNE with %s method' % parameters.tSNE_method)
         tsne = TSNE(perplexity=parameters.perplexity, metric='precomputed', verbose=1, n_jobs=-1,
                     method=parameters.tSNE_method)
         yData = tsne.fit_transform(D)
     else:
+        print("TSNE fitting complete. Computing Distances")
         tsne = TSNE(
             perplexity=parameters.perplexity,
             learning_rate="auto",
@@ -364,7 +372,7 @@ def file_embeddingSubSampling(projectionFile, parameters):
 
     if parameters.method == "TSNE":
         parameters.perplexity = perplexity
-        yData = run_tSne(signalData, parameters)
+        yData = run_tSne(signalData, parameters, projectionFile)
     elif parameters.method == "UMAP":
         yData = run_UMAP(signalData, parameters, save_model=False)
     else:
@@ -428,6 +436,8 @@ def runEmbeddingSubSampling(projectionDirectory, parameters):
     L = len(projectionFiles)
     # L = 3
     numPerDataSet = round(N / L)
+    print(f"Number of files: {L}")
+    print(f"Number of samples per file: {numPerDataSet}")
     numModes = parameters.pcaModes
     numPeriods = parameters.numPeriods
 
@@ -1012,7 +1022,7 @@ def runEmbeddingSubSampling_batch(projectionDirectory, parameters, i):
         projectionFiles[i], parameters
     )
 
-def subsampled_tsne_from_projections_batch(parameters, results_directory,i):
+def subsampled_tsne_from_projections_batch(parameters, results_directory, i):
     """
     Wrapper function for training set subsampling and mapping.
     """
