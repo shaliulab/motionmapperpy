@@ -230,6 +230,7 @@ def findWatershedRegions(parameters, minimum_regions=150, startsigma=0.1, pThres
     zValLens = np.array(zValLens)
     # print(zValNames)
     zValNames = np.array(zValNames, dtype=object)
+    print(f"zValues shape going into watershed: {zValues.shape}")
     LL, wbounds, sigma, xx, density = wshedTransform(
         zValues, minimum_regions, startsigma, tsnefolder, saveplot=True
     )

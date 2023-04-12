@@ -92,7 +92,7 @@ def findPointDensity(zValues, sigma, numPoints, rangeVals):
     Z = Z / np.sum(Z)
     Z = np.pad(Z, ((0, 1), (0, 1)), mode="constant", constant_values=((0, 0), (0, 0)))
     density = fftshift(np.real(ifft2(np.multiply(fft2(G), fft2(Z))))).T
-    density[density < 1e-5] = 0
+    density[density < 1e-4] = 0
     # density[density > 1.5e-2] = 1.5e-2
     bounds = getDensityBounds(density)
     return bounds, xx, density

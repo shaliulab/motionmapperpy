@@ -14,12 +14,24 @@ def setRunParameters(parameters=None):
 
     """# %%%%%%%% General Parameters %%%%%%%%"""
     # projectPath = "20230103_mmpy_lts_day1_pchip_nolimit_headprob_before"
-    projectPath = "20230105-mmpy-lts-day1"
+    # projectPath = "20230109-mmpy-lts-day1-headprobinterp-pchiplimit10-ffill-medianwin5-tss64k-tsp32k"
+    # projectPath = "20230110-mmpy-lts-day1-headprobinterp-pchiplimit10-ffillafterego-tss64k-tsp32k"
+
+    # projectPath = "20230110-mmpy-lts-day1-headprobinterp-pchiplimit3-missingness-ffillafterego-tss64k-tsp32k-removemissing"
+    # projectPath = "20230111-mmpy-lts-day1-headprobinterp-linearlimit3-missingness-fillnanmissing-tss64k-tsp32k-removegt1missing"
+    # projectPath = "20230112-mmpy-lts-day1-headprobinterp-missingness-pchip5-fillnanmedian-setnonfinite0-tss32k-tsp10k-removegt1missing"
+    # projectPath = "20230117-mmpy-lts-day1-headprobinterp-missingness-pchip5-linear-setnonfinite0-tss32k-tsp10k-removegt6missing"
+    
+    # projectPath = "20230210-mmpy-lts-day1-headprobinterp-missingness-pchip5-fillnanmedian-setnonfinite0-removegt1missing"
+    projectPath = "20230409-mmpy-lts-all-headprobinterp-missingness-pchip5-fillnanmedian-setnonfinite0-removegt1missing"
+    # projectPath = "20230221-mmpy-lts-problematic-subset-headprobinterp-missingness-pchip5-fillnanmedian-setnonfinite0-removegt1missing"
+    
+    # projectPath = "20230110-mmpy-lts-day1-headprobinterp-pchiplimit10-ffillafterego-tss64k-tsp32k-removemissing"
     # projectPath = "20230103_mmpy_lts_day1_pchip_nolimit_headprob_before_setnan0"
     # projectPath = "20221208_mmpy_lts_all_filtered"
 
     # %number of processors to use in parallel code
-    numProcessors = 16
+    numProcessors = 20
 
     useGPU = -1  # -1 for CPU, 0 for first GPU, 1 for second GPU, etc.
 
@@ -56,10 +68,10 @@ def setRunParameters(parameters=None):
     embedding_batchSize = 32000
 
     # %maximum number of iterations for the Nelder-Mead algorithm
-    maxOptimIter = 500
+    maxOptimIter = 100
 
     # %number of points in the training set
-    trainingSetSize = 5000
+    trainingSetSize = 64000
 
     # %number of neigbors to use when re-embedding
     maxNeighbors = 200
@@ -71,7 +83,7 @@ def setRunParameters(parameters=None):
     training_perplexity = 20
 
     # %number of points to evaluate in each training set file
-    training_numPoints = 3000
+    training_numPoints = 4000
 
     # %minimum training set template length
     minTemplateLength = 1

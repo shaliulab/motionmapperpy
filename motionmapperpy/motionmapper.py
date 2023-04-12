@@ -9,6 +9,7 @@ import matplotlib
 matplotlib.use("Agg")
 
 import pickle
+from pathlib import Path
 
 import h5py
 import hdf5storage
@@ -432,6 +433,13 @@ def runEmbeddingSubSampling(projectionDirectory, parameters):
     parameters = setRunParameters(parameters)
     projectionFiles = glob.glob(projectionDirectory + "/*pcaModes.mat")
     projectionFiles = natsort.natsorted(projectionFiles)
+    for projectionFile in projectionFiles.copy():
+        print(f"Checking {projectionFile}")
+        if not os.path.exists(
+            f"{parameters.projectPath}/Subsampled_wavelets/{pathlib.Path(projectionFile).stem}-subsampled-wavelets.mat"
+        ):
+            print(f"Skipping {projectionFile}")
+            projectionFiles.remove(projectionFile)
     N = parameters.trainingSetSize
     L = len(projectionFiles)
     # L = 3
@@ -934,6 +942,19 @@ def file_embeddingSubSampling_batch(projectionFile, parameters):
         edge_mask = edge_mask[:projections_shape[0]]
         print(f'Frac on edge: {np.sum(edge_mask)/projections_shape[0]}')
 
+    missingness_file = f"{parameters.projectPath}/Ego/{Path(projectionFile).stem}.h5"
+    with h5py.File(
+        missingness_file,
+        "r",
+    ) as hfile:
+        print(f'projection file: {projectionFile}')
+        print(f'missingness file: {missingness_file}')
+        missingness_mask = hfile["missing_data_indices"][:].T.astype(bool)
+
+
+        print(f"projections shape: {missingness_mask.shape}")
+        print(f'missingness shape: {edge_mask.shape}')
+        print(f'Frac missing: {np.sum(missingness_mask)/projections_shape[0]}')
     if projections_shape[0] < numPoints:
         raise ValueError(
             "Training number of points for miniTSNE is greater than # samples in some files. Please "
@@ -954,7 +975,9 @@ def file_embeddingSubSampling_batch(projectionFile, parameters):
         signalIdx = np.indices((projections_shape[0],))[0]
         print(f"signalIdx shape: {signalIdx.shape}")
         print(f"edge_mask shape: {edge_mask.shape}")
-        signalIdx = signalIdx[[not mask_ele for mask_ele in edge_mask]]
+        mask = np.any(np.vstack([edge_mask, missingness_mask]).T,axis=1)
+        print(f"mask shape: {mask.shape}")
+        signalIdx = signalIdx[[not mask_ele for mask_ele in mask]]
         # Subset to remove edge calls
         if signalIdx.shape[0] < numPoints:
             print("Warning: Not enough points to sample. Using all points")
