@@ -12,11 +12,12 @@ from sklearn.mixture import GaussianMixture
 
 from .mmutils import *
 from datetime import datetime
+
 bmapcmap = gencmap()
 
 
 def wshedTransform(zValues, min_regions, sigma, tsnefolder, saveplot=True):
-    date = datetime.now().strftime('%Y%m%d')
+    date = datetime.now().strftime("%Y%m%d")
     print("Starting watershed transform...")
 
     bounds, xx, density = findPointDensity(
@@ -37,7 +38,12 @@ def wshedTransform(zValues, min_regions, sigma, tsnefolder, saveplot=True):
 
     while numRegs > min_regions:
         sigma += 0.05
-        _, xx, density = findPointDensity(zValues, sigma, 611, rangeVals=[-np.abs(zValues).max() - 15, np.abs(zValues).max() + 15])
+        _, xx, density = findPointDensity(
+            zValues,
+            sigma,
+            611,
+            rangeVals=[-np.abs(zValues).max() - 15, np.abs(zValues).max() + 15],
+        )
         density[density > 0.005] = 0.005
         density[density < 0.0005] = 0.0
         wshed = watershed(-density, connectivity=10)
@@ -46,7 +52,7 @@ def wshedTransform(zValues, min_regions, sigma, tsnefolder, saveplot=True):
         wshed[density < 1e-10] = 0
 
         numRegs = len(np.unique(wshed)) - 1
-        print('\t Sigma %0.2f, Regions %i' % (sigma, numRegs), end='\r')
+        print("\t Sigma %0.2f, Regions %i" % (sigma, numRegs), end="\r")
     for i, wreg in enumerate(np.unique(wshed)):
         wshed[wshed == wreg] = i
     wbounds = np.where(roberts(wshed).astype("bool"))
@@ -75,14 +81,16 @@ def wshedTransform(zValues, min_regions, sigma, tsnefolder, saveplot=True):
         ax.imshow(density, origin="lower", cmap=bmapcmap)
         ax.scatter(wbounds[0], wbounds[1], color="k", s=0.1)
         ax.axis("off")
-        fig.savefig(f"{tsnefolder}{date}_sigma{str(round(sigma,3)).replace('.','_')}_regions{numRegs}_zWshed.png")
+        fig.savefig(
+            f"{tsnefolder}{date}_sigma{str(round(sigma,3)).replace('.','_')}_regions{numRegs}_zWshed.png"
+        )
         plt.close()
         plt.switch_backend(bend)
     return wshed, wbounds, sigma, xx, density
 
 
 def velGMM(ampV, parameters, projectPath, saveplot=True, minimum_regions=50):
-    date = datetime.now().strftime('%Y%m%d')
+    date = datetime.now().strftime("%Y%m%d")
     if parameters.method == "TSNE":
         if parameters.waveletDecomp:
             tsnefolder = projectPath + "/TSNE/"
@@ -110,16 +118,34 @@ def velGMM(ampV, parameters, projectPath, saveplot=True, minimum_regions=50):
         bins = ax.hist(vellog10, bins=200, density=True, color="k", alpha=0.5)
         bins = bins[1]
         p_score = np.exp(gm.score_samples(bins[:, None]))
-        ax.plot(bins, p_score, color='k', alpha=0.5)
+        ax.plot(bins, p_score, color="k", alpha=0.5)
 
-        for (c, compno, mu, sigma, p) in \
-                zip(['royalblue', 'firebrick'], [1, 2], gm.means_.squeeze(), np.sqrt(gm.covariances_.squeeze()),
-                    gm.weights_):
-            ax.plot(bins, getPDF(bins, mu, sigma, p), label='Component %i' % compno, color=c, alpha=0.5)
+        for (c, compno, mu, sigma, p) in zip(
+            ["royalblue", "firebrick"],
+            [1, 2],
+            gm.means_.squeeze(),
+            np.sqrt(gm.covariances_.squeeze()),
+            gm.weights_,
+        ):
+            ax.plot(
+                bins,
+                getPDF(bins, mu, sigma, p),
+                label="Component %i" % compno,
+                color=c,
+                alpha=0.5,
+            )
 
-        ax.plot(bins, gm.predict_proba(bins[:, None])[:, minind], label='pRest')
-        ax.axvline(bins[np.where(gm.predict_proba(bins[:, None])[:, minind] < np.min(parameters.pThreshold))[0][0]], color='firebrick',
-                   label='pRest=%0.2f'%np.min(parameters.pThreshold))
+        ax.plot(bins, gm.predict_proba(bins[:, None])[:, minind], label="pRest")
+        ax.axvline(
+            bins[
+                np.where(
+                    gm.predict_proba(bins[:, None])[:, minind]
+                    < np.min(parameters.pThreshold)
+                )[0][0]
+            ],
+            color="firebrick",
+            label="pRest=%0.2f" % np.min(parameters.pThreshold),
+        )
         ax.legend()
         ax.set_xlabel(r"$log_{10}$ Velocity")
         ax.set_ylabel("PDF")
@@ -148,10 +174,22 @@ def makeGroupsAndSegments(watershedRegions, zValLens, min_length=10, max_length=
     )
 
     splitinds = np.where(np.diff(watershedRegions, axis=0) != 0)[0] + 1
-    inds = [i for i in np.split(inds, splitinds) if len(i) > min_length and len(i) < max_length]
-    wregs = [i[0] for i in np.split(watershedRegions, splitinds) if len(i) > min_length and len(i) < max_length]
+    inds = [
+        i
+        for i in np.split(inds, splitinds)
+        if len(i) > min_length and len(i) < max_length
+    ]
+    wregs = [
+        i[0]
+        for i in np.split(watershedRegions, splitinds)
+        if len(i) > min_length and len(i) < max_length
+    ]
 
-    vinds = [i for i in np.split(vinds, splitinds) if len(i) > min_length and len(i) < max_length]
+    vinds = [
+        i
+        for i in np.split(vinds, splitinds)
+        if len(i) > min_length and len(i) < max_length
+    ]
     groups = [np.empty((0, 3), dtype=int)] * watershedRegions.max()
 
     for wreg, tind, vind in zip(wregs, inds, vinds):
@@ -168,11 +206,18 @@ def makeGroupsAndSegments(watershedRegions, zValLens, min_length=10, max_length=
     return groups
 
 
-def findWatershedRegions(parameters, minimum_regions=150, startsigma=0.1, pThreshold=None,saveplot=True, endident = '*_pcaModes.mat',
-                         min_length_videos=10):
-    date = datetime.now().strftime('%Y%m%d')
-    projectionfolder = parameters.projectPath + '/Projections/'
-    if parameters.method == 'TSNE':
+def findWatershedRegions(
+    parameters,
+    minimum_regions=150,
+    startsigma=0.1,
+    pThreshold=None,
+    saveplot=True,
+    endident="*_pcaModes.mat",
+    min_length_videos=10,
+):
+    date = datetime.now().strftime("%Y%m%d")
+    projectionfolder = parameters.projectPath + "/Projections/"
+    if parameters.method == "TSNE":
         if parameters.waveletDecomp:
             tsnefolder = parameters.projectPath + "/TSNE/"
         else:
@@ -244,7 +289,11 @@ def findWatershedRegions(parameters, minimum_regions=150, startsigma=0.1, pThres
     if parameters.method == "TSNE":
         print("Calculating velocity distributions...")
         ampVels, pRest = velGMM(
-            ampVels, parameters, parameters.projectPath, saveplot=saveplot, minimum_regions=minimum_regions
+            ampVels,
+            parameters,
+            parameters.projectPath,
+            saveplot=saveplot,
+            minimum_regions=minimum_regions,
         )
 
         outdict = {
@@ -303,14 +352,30 @@ def findWatershedRegions(parameters, minimum_regions=150, startsigma=0.1, pThres
     )
     print("\t tempsave done.")
 
-    groups = makeGroupsAndSegments(watershedRegions, zValLens, min_length=min_length_videos)
-    outdict = {'zValues': zValues, 'zValNames': zValNames, 'zValLens': zValLens, 'sigma': sigma, 'xx': xx,
-               'density': density, 'LL': LL, 'watershedRegions': watershedRegions, 'v': ampVels, 'pRest': pRest,
-               'wbounds': wbounds, 'groups': groups}
-    hdf5storage.write(data=outdict, path='/', truncate_existing=True,
-                      filename=f"{tsnefolder}{date}_sigma{str(round(sigma,3)).replace('.','_')}_minregions{minimum_regions}_zVals_wShed_groups_finalsave.mat", store_python_metadata=False,
-                      matlab_compatible=True)
+    groups = makeGroupsAndSegments(
+        watershedRegions, zValLens, min_length=min_length_videos
+    )
+    outdict = {
+        "zValues": zValues,
+        "zValNames": zValNames,
+        "zValLens": zValLens,
+        "sigma": sigma,
+        "xx": xx,
+        "density": density,
+        "LL": LL,
+        "watershedRegions": watershedRegions,
+        "v": ampVels,
+        "pRest": pRest,
+        "wbounds": wbounds,
+        "groups": groups,
+    }
+    hdf5storage.write(
+        data=outdict,
+        path="/",
+        truncate_existing=True,
+        filename=f"{tsnefolder}{date}_sigma{str(round(sigma,3)).replace('.','_')}_minregions{minimum_regions}_zVals_wShed_groups_finalsave.mat",
+        store_python_metadata=False,
+        matlab_compatible=True,
+    )
 
-    print('All data saved.')
-
-
+    print("All data saved.")

@@ -24,7 +24,7 @@ setuptools.setup(
         "scikit-image",
         "easydict",
         "umap-learn",
-        "imageio"
+        "imageio",
     ],
     packages=setuptools.find_packages(),
     classifiers=[

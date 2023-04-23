@@ -138,8 +138,9 @@ def conV2matV7(matfile):
             print(F)
             return
 
+
 def checkParams(parameters, projections):
-    if np.any([p.shape[0]<parameters.numPoints  for p in projections]):
+    if np.any([p.shape[0] < parameters.numPoints for p in projections]):
         plens = [p.shape[0] for p in projections]
         print(plens)
         print(

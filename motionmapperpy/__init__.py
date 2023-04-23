@@ -6,10 +6,16 @@ from .motionmapper import (
     run_UMAP,
     runEmbeddingSubSampling,
     subsampled_tsne_from_projections,
-    subsampled_tsne_from_projections_batch
+    subsampled_tsne_from_projections_batch,
 )
 from .setrunparameters import setRunParameters
-from .wavelet import findWavelets
+from .wavelet import findWavelets, fastWavelet_morlet_convolution_parallel
 from .wshed import findWatershedRegions
-from .demoutils import makeregionvideo_flies, getTransitions, makeTransitionMatrix, doTheShannonShuffle, \
-    plotLaggedEigenvalues, makeregionvideos_mice
+from .demoutils import (
+    makeregionvideo_flies,
+    getTransitions,
+    makeTransitionMatrix,
+    doTheShannonShuffle,
+    plotLaggedEigenvalues,
+    makeregionvideos_mice,
+)

@@ -21,20 +21,23 @@ def setRunParameters(parameters=None):
     # projectPath = "20230111-mmpy-lts-day1-headprobinterp-linearlimit3-missingness-fillnanmissing-tss64k-tsp32k-removegt1missing"
     # projectPath = "20230112-mmpy-lts-day1-headprobinterp-missingness-pchip5-fillnanmedian-setnonfinite0-tss32k-tsp10k-removegt1missing"
     # projectPath = "20230117-mmpy-lts-day1-headprobinterp-missingness-pchip5-linear-setnonfinite0-tss32k-tsp10k-removegt6missing"
-    
+
     # projectPath = "20230210-mmpy-lts-day1-headprobinterp-missingness-pchip5-fillnanmedian-setnonfinite0-removegt1missing"
     # projectPath = "20230409-mmpy-lts-all-headprobinterp-missingness-pchip5-fillnanmedian-setnonfinite0-removegt1missing"
-    projectPath = "20230420-mmpy-lts-all-headprobinterp-missingness-pchip5-fillnanmedian-setnonfinite0-removegt1missing"
+    # projectPath = "20230420-mmpy-lts-all-headprobinterp-missingness-pchip5-fillnanmedian-setnonfinite0-removegt1missing"
+    projectPath = (
+        "20230421-mmpy-lts-all-headprobinterp-missingness-pchip5-medianwin5-gaussian"
+    )
     # projectPath = "20230415-mmpy-lts-all-headprobinterp-missingness-pchip5-fillnanmedian-setnonfinite0-removegt1missing"
- 
+
     # projectPath = "20230221-mmpy-lts-problematic-subset-headprobinterp-missingness-pchip5-fillnanmedian-setnonfinite0-removegt1missing"
-    
+
     # projectPath = "20230110-mmpy-lts-day1-headprobinterp-pchiplimit10-ffillafterego-tss64k-tsp32k-removemissing"
     # projectPath = "20230103_mmpy_lts_day1_pchip_nolimit_headprob_before_setnan0"
     # projectPath = "20221208_mmpy_lts_all_filtered"
 
     # %number of processors to use in parallel code
-    numProcessors = 18
+    numProcessors = 24
 
     useGPU = -1  # -1 for CPU, 0 for first GPU, 1 for second GPU, etc.
 
@@ -197,4 +200,3 @@ def setRunParameters(parameters=None):
         parameters.projectPath = projectPath
 
     return parameters
-
