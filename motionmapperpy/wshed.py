@@ -38,10 +38,12 @@ def wshedTransform(zValues, min_regions, sigma, tsnefolder, saveplot=True):
     while numRegs > min_regions:
         sigma += 0.05
         _, xx, density = findPointDensity(zValues, sigma, 611, rangeVals=[-np.abs(zValues).max() - 15, np.abs(zValues).max() + 15])
+        density[density > 0.005] = 0.005
+        density[density < 0.0005] = 0.0
         wshed = watershed(-density, connectivity=10)
-        
+        # print(f"Not adjusting regions...")
         # TODO: Adjust to reasonable threshold
-        wshed[density < 1e-12] = 0
+        wshed[density < 1e-10] = 0
 
         numRegs = len(np.unique(wshed)) - 1
         print('\t Sigma %0.2f, Regions %i' % (sigma, numRegs), end='\r')
@@ -269,13 +271,13 @@ def findWatershedRegions(parameters, minimum_regions=150, startsigma=0.1, pThres
 
         print("\t tempsave done.")
 
-        t1 = time.time()
-        print('Adjusting non-stereotypic regions to 0...')
-        bwconn = np.convolve((np.diff(watershedRegions) == 0).astype(bool), np.array([True, True]))
-        pGoodRest = pRest > np.min(parameters.pThreshold)
-        badinds = ~np.bitwise_and(bwconn, pGoodRest)
-        watershedRegions[badinds] = 0
-        print("\t Done. %0.02f seconds" % (time.time() - t1))
+        # t1 = time.time()
+        # print('Adjusting non-stereotypic regions to 0...')
+        # bwconn = np.convolve((np.diff(watershedRegions) == 0).astype(bool), np.array([True, True]))
+        # pGoodRest = pRest > np.min(parameters.pThreshold)
+        # badinds = ~np.bitwise_and(bwconn, pGoodRest)
+        # watershedRegions[badinds] = 0
+        # print("\t Done. %0.02f seconds" % (time.time() - t1))
     else:
         pRest = 1.0
     outdict = {

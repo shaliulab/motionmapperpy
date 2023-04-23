@@ -25,6 +25,7 @@ from sklearn.manifold import TSNE
 from sklearn.neighbors import NearestNeighbors
 from umap import UMAP
 import numpy as np
+from scipy.signal import lombscargle
 
 from .mmutils import findPointDensity, gencmap
 from .setrunparameters import setRunParameters
@@ -384,13 +385,120 @@ def file_embeddingSubSampling(projectionFile, parameters):
 from tqdm import tqdm
 
 
-def get_wavelets(projectionFiles, parameters, i):
+def get_wavelets(projectionFiles, parameters, i, ls=False):
     # L = len(projectionFiles)
     # for i in tqdm(range(L)):
     print(f"Processing {projectionFiles[i]}")
-    calc_and_write_wavelets(projectionFiles[i], parameters)
+    if ls:
+        calc_and_write_wavelets_ls(projectionFiles[i], parameters)
+    else:
+        calc_and_write_wavelets(projectionFiles[i], parameters)
+
+def mm_findWavelets_ls(projections, numModes, parameters):
+    t1 = time.time()
+    print("\t Calculating wavelets, clock starting.")
 
 
+    import multiprocessing as mp
+    import numpy as np
+
+    if parameters.numProcessors < 0:
+        parameters.numProcessors = mp.cpu_count()
+    print("\t Using #%i CPUs." % parameters.numProcessors)
+    print("Using Lomb-Scargle.")
+
+    projections = np.array(projections)
+    t1 = time.time()
+
+    dt = 1.0 / parameters.samplingFreq
+    minT = 1.0 / parameters.maxF
+    maxT = 1.0 / parameters.minF
+    Ts = minT * (
+        2
+        ** (
+            (np.arange(parameters.numPeriods) * np.log(maxT / minT))
+            / (np.log(2) * (parameters.numPeriods - 1))
+        )
+    )
+    f = (1.0 / Ts)[::-1]
+    
+    N = projections.shape[0]
+
+    try:
+        pool = mp.Pool(parameters.numProcessors)
+        print(f"Scarglin' {projections.shape[1]} projections")
+        amplitudes = pool.starmap(
+            rolling_lombscargle,
+            [
+                (np.linspace(0, N/parameters.samplingFreq, N), projections[:, i], f.astype(float))
+                for i in range(projections.shape[1])
+            ],
+        )
+        amplitudes = np.concatenate(amplitudes, 0)
+        print(f"Done Scarglin' -- shape: {amplitudes.shape}")
+        pool.close()
+        pool.join()
+    except Exception as E:
+        pool.close()
+        pool.join()
+        raise E
+    print("\t Done at %0.02f seconds." % (time.time() - t1))
+    return amplitudes.T, f
+    
+
+
+def rolling_window_with_padding(arr, window_size):
+    padding = window_size // 2
+    padded_arr = np.pad(arr, (padding, padding - 1), mode='edge')
+    shape = padded_arr.shape[:-1] + (padded_arr.shape[-1] - window_size + 1, window_size)
+    strides = padded_arr.strides + (padded_arr.strides[-1],)
+    return np.lib.stride_tricks.as_strided(padded_arr, shape=shape, strides=strides)
+
+def rolling_lombscargle(data, sampling_times, freqs, window_size=200):
+
+    # Initialize an empty array to store the Lomb-Scargle periodograms
+    periodograms = np.zeros((data.size, freqs.size))
+
+    # Apply rolling window with padding
+    windows = rolling_window_with_padding(data, window_size)
+    windows_sampling_times = rolling_window_with_padding(sampling_times, window_size)
+
+    # Loop through windows and compute the Lomb-Scargle periodogram
+    for i, (window, window_sampling_times) in enumerate(zip(windows, windows_sampling_times)):
+        angular_frequency = 2 * np.pi * freqs
+        # TODO: finite check
+        window = window[np.isfinite(window)]
+        window_sampling_times = window_sampling_times[np.isfinite(window)]
+        periodogram = lombscargle(window_sampling_times, window, angular_frequency, normalize=True)
+        periodograms[i] = periodogram
+
+    return periodograms.T
+
+def calc_and_write_wavelets_ls(projectionFile, parameters):
+    # calculate and write wavelets with lomb-scargle from scipy
+    print("\t Loading Projections")
+
+    with h5py.File(projectionFile, "r") as hfile:
+        projections = hfile["projections"][:].T
+    projections = np.array(projections)
+
+    if parameters.waveletDecomp:
+        print("\t Calculating Wavelets")
+        if not os.path.exists(
+            f"{parameters.projectPath}/Wavelets/{pathlib.Path(projectionFile).stem}-wavelets.mat"
+        ):
+            data, freqs = mm_findWavelets_ls(projections, parameters.pcaModes, parameters)
+            print(f"\n Saving wavelets: {data.shape}")
+            with h5py.File(
+                f"{parameters.projectPath}/Wavelets/{pathlib.Path(projectionFile).stem}-wavelets.mat",
+                "w", libver='latest'
+            ) as f:
+                print("No compression")
+                f.create_dataset("wavelets", data=data)
+                f.create_dataset("f", data=freqs)
+
+            
+    
 def calc_and_write_wavelets(projectionFile, parameters):
     print("\t Loading Projections")
 
