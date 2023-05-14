@@ -25,9 +25,34 @@ def setRunParameters(parameters=None):
     # projectPath = "20230210-mmpy-lts-day1-headprobinterp-missingness-pchip5-fillnanmedian-setnonfinite0-removegt1missing"
     # projectPath = "20230409-mmpy-lts-all-headprobinterp-missingness-pchip5-fillnanmedian-setnonfinite0-removegt1missing"
     # projectPath = "20230420-mmpy-lts-all-headprobinterp-missingness-pchip5-fillnanmedian-setnonfinite0-removegt1missing"
-    projectPath = (
-        "20230421-mmpy-lts-all-headprobinterp-missingness-pchip5-medianwin5-gaussian"
-    )
+    # projectPath = (
+    #     "20230421-mmpy-lts-all-headprobinterp-missingness-pchip5-medianwin5-gaussian"
+    # )
+
+    # projectPath = (
+    #     "20230426-mmpy-lts-all-headprobinterp-missingness-pchip5-fillnanmedian-medianwin5-gaussian"
+    # )
+    # projectPath = (
+    #     "20230428-mmpy-lts-all-pchip5-headprobinterp-medianwin5-gaussian-lombscargle"
+    # )
+    # projectPath = (
+    #     "20230504-mmpy-lts-all-pchip5-headprobinterp-medianwin5-gaussian-lombscargle"
+    # )
+    # projectPath = "20230507-mmpy-lts-all-pchip5-headprobinterp-medianwin5-gaussian-lombscargle-sampledtracks"
+    # projectPath = "20230507-mmpy-lts-all-pchip5-headprobinterp-medianwin5-gaussian-lombscargle-win50-singleflysampledtracks"
+    # projectPath = "20230509-mmpy-lts-all-pchip5-headprobinterp-medianwin5-gaussian-lombscargle-win50-singleflysampledtracks-noyprob"
+    # projectPath = "20230509-mmpy-lts-all-pchip5-headprobinterp-medianwin5-gaussian-lombscargle-dynamicwinomega020-singleflysampledtracks-noyprob"
+    projectPath = "20230514-mmpy-lts-all-pchip5-headprobinterpy0xhead-medianwin5-gaussian-lombscargle-dynamicwinomega020-singleflysampledtracks"
+    # projectPath = (
+    #     "20230428-mmpy-lts-all-pchip5-headprobinterp-fillnanmedian-medianwin5-gaussian-cwt"
+    # )
+    # projectPath = (
+    #     "20230501-mmpy-lts-all-pchip5-headprobinterp-fillnanmedian-medianwin5-gaussian-cwt-death"
+    # )
+    #
+    # projectPath = (
+    #     "20230501-mmpy-lts-all-pchip5-headprobinterp-medianwin5-gaussian-lombscargle-death"
+    # )
     # projectPath = "20230415-mmpy-lts-all-headprobinterp-missingness-pchip5-fillnanmedian-setnonfinite0-removegt1missing"
 
     # projectPath = "20230221-mmpy-lts-problematic-subset-headprobinterp-missingness-pchip5-fillnanmedian-setnonfinite0-removegt1missing"
@@ -37,12 +62,12 @@ def setRunParameters(parameters=None):
     # projectPath = "20221208_mmpy_lts_all_filtered"
 
     # %number of processors to use in parallel code
-    numProcessors = 24
+    numProcessors = 8
 
     useGPU = -1  # -1 for CPU, 0 for first GPU, 1 for second GPU, etc.
-
+    # rm /Genomics/ayroleslab2/scott/git/lts-manuscript/analysis/20230421-mmpy-lts-all-headprobinterp-missingness-pchip5-medianwin5-gaussian/Projections/*zVals*
     # naps-track --slp-path 1h_example.slp --h5-path 1min_example.analysis.h5 --video-path 20220823-cut-to-1200to1300_libx264.mp4 --start-frame 0 --end-frame 1199 --aruco-marker-set DICT_5X5_50  --output-path example_output.analysis.h5 --aruco-error-correction-rate 1  --aruco-adaptive-thresh-constant 3 --aruco-adaptive-thresh-win-size-max 30 --aruco-adaptive-thresh-win-size-step 3 --aruco-perspective-rm-ignored-margin 0.13 --aruco-adaptive-thresh-win-size-min 3 --half-rolling-window-size 50 --tag-node 0
-    method = "TSNE"  # or 'UMAP'
+    method = "UMAP"  # or 'UMAP'
 
     """%%%%%%%% Wavelet Parameters %%%%%%%%"""
     # %Whether to do wavelet decomposition, if False then use normalized projections for tSNE embedding.
@@ -77,7 +102,7 @@ def setRunParameters(parameters=None):
     maxOptimIter = 1000
 
     # %number of points in the training set
-    trainingSetSize = 32000
+    trainingSetSize = 64000
 
     # %number of neigbors to use when re-embedding
     maxNeighbors = 200
@@ -89,14 +114,14 @@ def setRunParameters(parameters=None):
     training_perplexity = 20
 
     # %number of points to evaluate in each training set file
-    training_numPoints = 4000
+    training_numPoints = 32000
 
     # %minimum training set template length
     minTemplateLength = 1
 
     """%%%%%%%% UMAP Parameters %%%%%%%%"""
     # Size of local neighborhood for UMAP.
-    n_neighbors = 15
+    n_neighbors = 200
 
     # Negative sample rate while training.
     train_negative_sample_rate = 5

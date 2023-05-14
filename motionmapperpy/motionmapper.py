@@ -79,6 +79,7 @@ def run_UMAP(data, parameters, save_model=True):
         min_dist=min_dist,
         n_components=umap_output_dims,
         n_epochs=n_training_epochs,
+        metric="symmetric_kl",  # TODO: check if this is the right metric
     )
     y = um.fit_transform(data)
     trainmean = np.mean(y, 0)
@@ -98,7 +99,7 @@ def run_UMAP(data, parameters, save_model=True):
     return y
 
 
-def run_tSne(data, parameters=None,filename = "none"):
+def run_tSne(data, parameters=None, filename="none"):
     """
     run_tSne runs the t-SNE algorithm on an array of normalized wavelet amplitudes
     :param data: Nxd array of wavelet amplitudes (will normalize if unnormalized) containing N data points
@@ -125,9 +126,14 @@ def run_tSne(data, parameters=None,filename = "none"):
             with open("list_of_bad_files.txt", "a") as txt_file:
                 txt_file.write(f"{filename} \n")
 
-        print('Computing t-SNE with %s method' % parameters.tSNE_method)
-        tsne = TSNE(perplexity=parameters.perplexity, metric='precomputed', verbose=1, n_jobs=-1,
-                    method=parameters.tSNE_method)
+        print("Computing t-SNE with %s method" % parameters.tSNE_method)
+        tsne = TSNE(
+            perplexity=parameters.perplexity,
+            metric="precomputed",
+            verbose=1,
+            n_jobs=-1,
+            method=parameters.tSNE_method,
+        )
         yData = tsne.fit_transform(D)
     else:
         print("TSNE fitting complete. Computing Distances")
@@ -150,7 +156,6 @@ def run_tSne(data, parameters=None,filename = "none"):
 
 def returnTemplates(yData, signalData, minTemplateLength=10, kdNeighbors=10):
     maxY = np.ceil(np.max(np.abs(yData[:]))) + 1
-    d = signalData.shape[1]
 
     nn = NearestNeighbors(n_neighbors=kdNeighbors + 1, n_jobs=-1)
     nn.fit(yData)
@@ -160,8 +165,6 @@ def returnTemplates(yData, signalData, minTemplateLength=10, kdNeighbors=10):
     _, xx, density = findPointDensity(yData, sigma, 501, [-maxY, maxY])
 
     L = watershed(-density, connectivity=10)
-
-    # savemat('/mnt/HFSP_Data/scripts/LIDAR/testdata.mat', {'ydata':yData, 'D':D, 'density':density, 'L':L})
 
     watershedValues = np.digitize(yData, xx)
     watershedValues = L[watershedValues[:, 1], watershedValues[:, 0]]
@@ -271,102 +274,25 @@ import pathlib
 
 def file_embeddingSubSampling(projectionFile, parameters):
     perplexity = parameters.training_perplexity
-    # numPoints = parameters.training_numPoints
-
-    print("\t Loading Projections")
-    # try:
-    #     projections = np.array(
-    #         loadmat(projectionFile, variable_names=["projections"])["projections"]
-    #     )
-    # except:
-
-    # with h5py.File(projectionFile, "r") as hfile:
-        # TODO: Don't deal with edge calls
-        # Example filename: 20220217-lts-cam1_day1_24hourvars-0-pcaModes.mat
-
-        # projections_shape = hfile["projections"][:].T.shape
-    # projections = np.array(projections)
-    # edge_file = '../data/edge/' + '-'.join(pathlib.Path(projectionFile).stem.split('-')[:3]) + '_edge.mat'
-    # fly_num = int(pathlib.Path(projectionFile).stem.split('-')[3].split('_')[0])
-    # with h5py.File(edge_file, "r") as hfile:
-    #     edge_mask = np.append([False],hfile["edger"][:].T[:, fly_num].astype(bool))
-    #     print(f'projection file: {projectionFile}')
-    #     print(f'edge shape: {edge_mask.shape}')
-    #     print(f'Frac on edge: {np.sum(edge_mask)/projections_shape[0]}')
-
-    # if projections_shape[0] < numPoints:
-    #     raise ValueError(
-    #         "Training number of points for miniTSNE is greater than # samples in some files. Please "
-    #         "adjust it to %i or lower" % (projections_shape[0])
-    #     )
-
-    # N = projections_shape[0]
-    # numModes = parameters.pcaModes
-    # skipLength = np.floor(N / numPoints).astype(int)
-    # if skipLength == 0:
-    #     skipLength = 1
-    #     numPoints = N
-
-    # print(f"Subsampling {N} points to {numPoints} points")
-
-    # firstFrame = N % numPoints
 
     if parameters.waveletDecomp:
 
-        # signalIdx = np.indices((projections_shape[0],))[0]
-        # # Subset to remove edge calls
-        # signalIdx = signalIdx[[not mask_ele for mask_ele in edge_mask]]
-        # signalIdx = signalIdx[np.round(np.linspace(0, signalIdx.shape[0] - 1, numPoints)).astype(int)]
-        # # signalIdx = signalIdx[
-        # #     firstFrame : int(firstFrame + (numPoints) * skipLength) : skipLength
-        # # ]
-        # print("\t Calculating Wavelets")
-        # print(
-        #     f"{parameters.projectPath}/Wavelets/{pathlib.Path(projectionFile).stem}-wavelets.mat"
-        # )
-        # if not os.path.exists(
-        #     f"{parameters.projectPath}/Wavelets/{pathlib.Path(projectionFile).stem}-wavelets.mat"
-        # ):
-            # data, _ = mm_findWavelets(projections, numModes, parameters)
-        # else:
         print("\n Loading wavelets")
         # projections = np.array(loadmat(projectionFile, variable_names=['projections'])['projections'])
         with h5py.File(
             f"{parameters.projectPath}/Subsampled_wavelets/{pathlib.Path(projectionFile).stem}-subsampled-wavelets.mat",
             "r",
         ) as f:
-            data = f["signaldata"][:]#[signalIdx]
-            
+            data = f["signaldata"][:]  # [signalIdx]
+
         print(f"Data shape: {data.shape}")
         print("\n Loaded wavelets")
-            # data = loadmat(f'{parameters.projectPath}/Wavelets/{pathlib.Path(projectionFile).stem}-wavelets.mat')
+        # data = loadmat(f'{parameters.projectPath}/Wavelets/{pathlib.Path(projectionFile).stem}-wavelets.mat')
 
         print("\n Subsampled wavelets")
-        # if parameters.useGPU >= 0:
-        #     data2 = data[signalIdx].copy()
-        #     signalData = data2  # .get()
-        #     if not os.path.exists(
-        #         f"{parameters.projectPath}/Wavelets/{pathlib.Path(projectionFile).stem}-wavelets.mat"
-        #     ):
-        #         with h5py.File(
-        #             f"{parameters.projectPath}/Wavelets/{pathlib.Path(projectionFile).stem}-wavelets.mat",
-        #             "w",
-        #         ) as f:
-        #             f.create_dataset("wavelets", data=data, compression="lzf")
-        #     del data, data2
-        # else:
-        # print("MAKING IT WORK")
+
         signalData = data
 
-
-    # else:
-    #     print("Using projections for tSNE. No wavelet decomposition.")
-    #     data = projections
-    #     signalIdx = np.indices((data.shape[0],))[0]
-    #     signalIdx = signalIdx[
-    #         firstFrame : int(firstFrame + (numPoints) * skipLength) : skipLength
-    #     ]
-    #     signalData = data[signalIdx]
     print("\n Subsampled projections")
     signalAmps = np.sum(signalData, axis=1)
 
@@ -394,10 +320,10 @@ def get_wavelets(projectionFiles, parameters, i, ls=False):
     else:
         calc_and_write_wavelets(projectionFiles[i], parameters)
 
+
 def mm_findWavelets_ls(projections, numModes, parameters):
     t1 = time.time()
     print("\t Calculating wavelets, clock starting.")
-
 
     import multiprocessing as mp
     import numpy as np
@@ -408,6 +334,8 @@ def mm_findWavelets_ls(projections, numModes, parameters):
     print("Using Lomb-Scargle.")
 
     projections = np.array(projections)
+    # TODO: Remove this
+    # projections = projections[:, 0:23]
     t1 = time.time()
 
     dt = 1.0 / parameters.samplingFreq
@@ -421,20 +349,34 @@ def mm_findWavelets_ls(projections, numModes, parameters):
         )
     )
     f = (1.0 / Ts)[::-1]
-    
+
+    # TODO: Move this to parameters
+    omega0 = 20
+    scales = (omega0 + np.sqrt(2 + omega0**2)) / (4 * np.pi * f)
+    window_sizes = np.round(scales * parameters.samplingFreq).astype(int)
+    print(f"Window sizes: {window_sizes}")
+    print(f"Frequencies: {f}, shape: {f.shape}")
+
     N = projections.shape[0]
     print(f"Projection shape: {projections.shape}")
+    print("No normalization -- precentering though.")
     try:
         pool = mp.Pool(parameters.numProcessors)
         print(f"Scarglin' {projections.shape[1]} projections")
         amplitudes = pool.starmap(
             rolling_lombscargle,
             [
-                (projections[:, i], np.linspace(0, N/parameters.samplingFreq, N), f.astype(float))
+                (
+                    projections[:, i],
+                    np.linspace(0, N / parameters.samplingFreq, N),
+                    f.astype(float),
+                    window_sizes,
+                )
                 for i in range(projections.shape[1])
             ],
         )
         amplitudes = np.concatenate(amplitudes, 0)
+        amplitudes[~np.isfinite(amplitudes)] = 0
         print(f"Done Scarglin' -- shape: {amplitudes.shape}")
         pool.close()
         pool.join()
@@ -443,41 +385,70 @@ def mm_findWavelets_ls(projections, numModes, parameters):
         pool.join()
         raise E
     print("\t Done at %0.02f seconds." % (time.time() - t1))
-    return amplitudes.T, f
-    
+    return amplitudes.T, f, window_sizes
 
 
 def rolling_window_with_padding(arr, window_size):
+    # TODO: double check this
     padding = (window_size - 1) // 2
-    padded_arr = np.pad(arr, (padding, padding), mode='edge')
-    shape = padded_arr.shape[:-1] + (padded_arr.shape[-1] - window_size + 1, window_size)
+    padded_arr = np.pad(arr, (padding, padding), mode="edge")
+    shape = padded_arr.shape[:-1] + (
+        padded_arr.shape[-1] - window_size + 1,
+        window_size,
+    )
     strides = padded_arr.strides + (padded_arr.strides[-1],)
+
     return np.lib.stride_tricks.as_strided(padded_arr, shape=shape, strides=strides)
 
-def rolling_lombscargle(data, sampling_times, freqs, window_size=50):
+
+def rolling_lombscargle(data, sampling_times, freqs, window_sizes):
+    # print(f"Inside rolling_lombscargle - data shape: {data.shape}")  # Debug print
+    # print(
+    #     f"Inside rolling_lombscargle - sampling_times shape: {sampling_times.shape}"
+    # )  # Debug print
+    # print(f"Inside rolling_lombscargle - freqs shape: {freqs.shape}")  # Debug print
 
     # Initialize an empty array to store the Lomb-Scargle periodograms
     periodograms = np.zeros((data.size, freqs.size))
 
-    # Apply rolling window with padding
-    windows = rolling_window_with_padding(data, window_size)
-    windows_sampling_times = rolling_window_with_padding(sampling_times, window_size)
+    # Loop through each frequency and its corresponding window size
+    for f_idx, (freq, window_size) in enumerate(zip(freqs, window_sizes)):
+        print(f"On frequency {f_idx} of {freqs.size}")
+        # print(
+        #     f"Inside rolling_lombscargle -  freq: {freq}, win size: {window_size}"
+        # )  # Debug print
+        # print(f"Inside rolling_lombscargle -  freq: {freq}")  # Debug print
+        windows = rolling_window_with_padding(data, window_size)
+        # print(
+        #     f"Inside rolling_lombscargle -  windows shape: {windows.shape}"
+        # )  # Debug print
+        windows_sampling_times = rolling_window_with_padding(
+            sampling_times, window_size
+        )
 
-    # Loop through windows and compute the Lomb-Scargle periodogram
-    for i, (window, sampling_times) in enumerate(zip(windows, windows_sampling_times)):
-        angular_frequency = 2 * np.pi * freqs
-        # TODO: finite check
-        tmp_window = window.copy()
-        window = window[np.isfinite(tmp_window)]
-        sampling_times = sampling_times[np.isfinite(tmp_window)]
-        periodogram = lombscargle(sampling_times, window, angular_frequency, normalize=True, precenter=True)
-        # Check if all are empty
-        if np.all(np.isnan(periodogram)):
-            periodogram = np.zeros_like(periodogram) 
-        periodogram[np.isnan(periodogram)] = 0
-        periodograms[i] = periodogram
+        for i, (window, times) in enumerate(zip(windows, windows_sampling_times)):
+            angular_frequency = 2 * np.pi * freq
+            tmp_window = window.copy()
+            # print(f"Inside rolling_lombscargle -  window shape: {window.shape}")
+            window = window[np.isfinite(tmp_window)]
+            # print(f"Post nan removal -  window shape: {window.shape}")
+            # sampling_times = sampling_times[np.isfinite(tmp_window)]
+            sampling_times_window = times[np.isfinite(tmp_window)]
+            # print(f"Processing window {i} of {windows.shape[0]}")
+            periodogram = lombscargle(
+                sampling_times_window,
+                window,
+                [angular_frequency],
+                normalize=False,
+                precenter=True,
+            )
 
+            if np.all(np.isnan(periodogram)):
+                periodogram = 0
+
+            periodograms[i, f_idx] = periodogram
     return periodograms.T
+
 
 def calc_and_write_wavelets_ls(projectionFile, parameters):
     # calculate and write wavelets with lomb-scargle from scipy
@@ -492,18 +463,21 @@ def calc_and_write_wavelets_ls(projectionFile, parameters):
         if not os.path.exists(
             f"{parameters.projectPath}/Wavelets/{pathlib.Path(projectionFile).stem}-wavelets.mat"
         ):
-            data, freqs = mm_findWavelets_ls(projections, parameters.pcaModes, parameters)
+            data, freqs, win_sizes = mm_findWavelets_ls(
+                projections, parameters.pcaModes, parameters
+            )
             print(f"\n Saving wavelets: {data.shape}")
             with h5py.File(
                 f"{parameters.projectPath}/Wavelets/{pathlib.Path(projectionFile).stem}-wavelets.mat",
-                "w", libver='latest'
+                "w",
+                libver="latest",
             ) as f:
                 print("No compression")
                 f.create_dataset("wavelets", data=data)
                 f.create_dataset("f", data=freqs)
+                f.create_dataset("win_sizes", data=win_sizes)
 
-            
-    
+
 def calc_and_write_wavelets(projectionFile, parameters):
     print("\t Loading Projections")
 
@@ -520,7 +494,8 @@ def calc_and_write_wavelets(projectionFile, parameters):
             print(f"\n Saving wavelets: {data.shape}")
             with h5py.File(
                 f"{parameters.projectPath}/Wavelets/{pathlib.Path(projectionFile).stem}-wavelets.mat",
-                "w", libver='latest'
+                "w",
+                libver="latest",
             ) as f:
                 print("No compression")
                 f.create_dataset("wavelets", data=data)
@@ -530,6 +505,8 @@ def calc_and_write_wavelets(projectionFile, parameters):
 import natsort
 
 from tqdm import tqdm
+
+
 def runEmbeddingSubSampling(projectionDirectory, parameters):
     """
     runEmbeddingSubSampling generates a training set given a set of .mat files.
@@ -555,11 +532,13 @@ def runEmbeddingSubSampling(projectionDirectory, parameters):
             projectionFiles.remove(projectionFile)
     N = parameters.trainingSetSize
     L = len(projectionFiles)
-    # L = 3
+
     numPerDataSet = round(N / L)
     print(f"Number of files: {L}")
     print(f"Number of samples per file: {numPerDataSet}")
     numModes = parameters.pcaModes
+    # TODO: Remove
+    # numModes = 23
     numPeriods = parameters.numPeriods
 
     if numPerDataSet > parameters.training_numPoints:
@@ -1032,42 +1011,51 @@ def findEmbeddings(
 
     return zValues, outputStatistics
 
+
 def file_embeddingSubSampling_batch(projectionFile, parameters):
     perplexity = parameters.training_perplexity
     numPoints = parameters.training_numPoints
 
-
     with h5py.File(projectionFile, "r") as hfile:
-        # TODO: Don't deal with edge calls
-        # Example filename: 20220217-lts-cam1_day1_24hourvars-0-pcaModes.mat
 
         projections_shape = hfile["projections"][:].T.shape
-    # projections = np.array(projections)
-    edge_file = '../data/edge/' + '-'.join(pathlib.Path(projectionFile).stem.split('-')[:3]) + '_edge.mat'
-    fly_num = int(pathlib.Path(projectionFile).stem.split('-')[3].split('_')[0])
-    with h5py.File(edge_file, "r") as hfile:
-        edge_mask = np.append([False], hfile["edger"][:].T[:, fly_num].astype(bool))
-        print(f'projection file: {projectionFile}')
-        print(f'edge file: {edge_file}')
+    # edge_file = (
+    #     "../data/edge/"
+    #     + "-".join(pathlib.Path(projectionFile).stem.split("-")[:3])
+    #     + "_edge.mat"
+    # )
+    # TODO: Remove
+    edge_file = (
+        "/Genomics/ayroleslab2/scott/git/lts-manuscript/analysis/sample_tracks/edge/"
+        + pathlib.Path(projectionFile).stem.split("-")[0]
+        + "_edge.mat"
+    )
+    print(f"Using edge file: {edge_file}")
 
-        print(f"projections shape: {projections_shape}")
-        print(f'edge shape: {edge_mask.shape}')
-        edge_mask = edge_mask[:projections_shape[0]]
-        print(f'Frac on edge: {np.sum(edge_mask)/projections_shape[0]}')
+    # fly_num = int(pathlib.Path(projectionFile).stem.split("-")[3].split("_")[0])
+    with h5py.File(edge_file, "r") as hfile:
+        edge_mask = np.append([False], hfile["edger"][:].T[:, 0].astype(bool))
+        # edge_mask = np.append([False], hfile["edger"][:].T[:, fly_num].astype(bool))
+    print(f"projection file: {projectionFile}")
+    print(f"edge file: {edge_file}")
+
+    print(f"projections shape: {projections_shape}")
+    print(f"edge shape: {edge_mask.shape}")
+    # edge_mask = edge_mask[: projections_shape[0]]
+    print(f"Frac on edge: {np.sum(edge_mask)/projections_shape[0]}")
 
     missingness_file = f"{parameters.projectPath}/Ego/{Path(projectionFile).stem}.h5"
     with h5py.File(
         missingness_file,
         "r",
     ) as hfile:
-        print(f'projection file: {projectionFile}')
-        print(f'missingness file: {missingness_file}')
+        print(f"projection file: {projectionFile}")
+        print(f"missingness file: {missingness_file}")
         missingness_mask = hfile["missing_data_indices"][:].T.astype(bool)
 
-
         print(f"projections shape: {missingness_mask.shape}")
-        print(f'missingness shape: {edge_mask.shape}')
-        print(f'Frac missing: {np.sum(missingness_mask)/projections_shape[0]}')
+        print(f"missingness shape: {edge_mask.shape}")
+        print(f"Frac missing: {np.sum(missingness_mask)/projections_shape[0]}")
     if projections_shape[0] < numPoints:
         raise ValueError(
             "Training number of points for miniTSNE is greater than # samples in some files. Please "
@@ -1082,13 +1070,12 @@ def file_embeddingSubSampling_batch(projectionFile, parameters):
 
     print(f"Subsampling {N} points to {numPoints} points")
 
-
     if parameters.waveletDecomp:
 
         signalIdx = np.indices((projections_shape[0],))[0]
         print(f"signalIdx shape: {signalIdx.shape}")
         print(f"edge_mask shape: {edge_mask.shape}")
-        mask = np.any(np.vstack([edge_mask, missingness_mask]).T,axis=1)
+        mask = np.any(np.vstack([edge_mask, missingness_mask]).T, axis=1)
         print(f"mask shape: {mask.shape}")
         signalIdx = signalIdx[[not mask_ele for mask_ele in mask]]
         # Subset to remove edge calls
@@ -1101,9 +1088,7 @@ def file_embeddingSubSampling_batch(projectionFile, parameters):
         else:
             print(f"Found {signalIdx.shape[0]} points to sample")
             skipLength = np.floor(signalIdx.shape[0] / numPoints).astype(int)
-            signalIdx = signalIdx[
-                0 : int(0 + (numPoints) * skipLength) : skipLength
-            ]
+            signalIdx = signalIdx[0 : int(0 + (numPoints) * skipLength) : skipLength]
         print(f"Final signalIdx: {signalIdx[0:10]}")
         print(f"Final signalIdx.shape: {signalIdx.shape}")
         print("\t Calculating Wavelets")
@@ -1153,10 +1138,8 @@ def runEmbeddingSubSampling_batch(projectionDirectory, parameters, i):
     projectionFiles = glob.glob(projectionDirectory + "/*pcaModes.mat")
     projectionFiles = natsort.natsorted(projectionFiles)
 
+    file_embeddingSubSampling_batch(projectionFiles[i], parameters)
 
-    file_embeddingSubSampling_batch(
-        projectionFiles[i], parameters
-    )
 
 def subsampled_tsne_from_projections_batch(parameters, results_directory, i):
     """
@@ -1189,7 +1172,4 @@ def subsampled_tsne_from_projections_batch(parameters, results_directory, i):
 
     print("Finding Training Set")
     # if not os.path.exists(tsne_directory + "training_data.mat"):
-    runEmbeddingSubSampling_batch(
-        projection_directory, parameters, i
-    )
-
+    runEmbeddingSubSampling_batch(projection_directory, parameters, i)

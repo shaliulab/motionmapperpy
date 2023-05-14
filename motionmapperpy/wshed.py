@@ -44,12 +44,12 @@ def wshedTransform(zValues, min_regions, sigma, tsnefolder, saveplot=True):
             611,
             rangeVals=[-np.abs(zValues).max() - 15, np.abs(zValues).max() + 15],
         )
-        density[density > 0.005] = 0.005
-        density[density < 0.0005] = 0.0
+        # density[density > 0.005] = 0.005
+        # density[density < 0.0005] = 0.0
         wshed = watershed(-density, connectivity=10)
         # print(f"Not adjusting regions...")
         # TODO: Adjust to reasonable threshold
-        wshed[density < 1e-10] = 0
+        # wshed[density < 0.5e-3] = 0
 
         numRegs = len(np.unique(wshed)) - 1
         print("\t Sigma %0.2f, Regions %i" % (sigma, numRegs), end="\r")
@@ -233,7 +233,7 @@ def findWatershedRegions(
         parameters.pThreshold = pThreshold
 
     zValues = []
-    projfiles = glob.glob(projectionfolder + "/" + endident)
+    projfiles = glob.glob(projectionfolder + "/*" + endident)
     # projfiles = glob.glob(projectionfolder + "/" + "*_zVals.mat")
     # projfiles = [f.split("_zVals.mat")[0] + ".mat" for f in projfiles][0:10]
     # projfiles = ["/Genomics/ayroleslab2/scott/git/lts-manuscript/analysis/20221208_mmpy_lts_all_filtered/Projections/20220312-lts-cam3_day4_24hourvars-2-pcaModes_zVals.mat"]
@@ -278,6 +278,7 @@ def findWatershedRegions(
     # print(zValNames)
     zValNames = np.array(zValNames, dtype=object)
     print(f"zValues shape going into watershed: {zValues.shape}")
+    # raise Exception("stop here")
     LL, wbounds, sigma, xx, density = wshedTransform(
         zValues, minimum_regions, startsigma, tsnefolder, saveplot=True
     )
@@ -320,13 +321,13 @@ def findWatershedRegions(
 
         print("\t tempsave done.")
 
-        # t1 = time.time()
-        # print('Adjusting non-stereotypic regions to 0...')
-        # bwconn = np.convolve((np.diff(watershedRegions) == 0).astype(bool), np.array([True, True]))
-        # pGoodRest = pRest > np.min(parameters.pThreshold)
-        # badinds = ~np.bitwise_and(bwconn, pGoodRest)
-        # watershedRegions[badinds] = 0
-        # print("\t Done. %0.02f seconds" % (time.time() - t1))
+        t1 = time.time()
+        print('Adjusting non-stereotypic regions to 0...')
+        bwconn = np.convolve((np.diff(watershedRegions) == 0).astype(bool), np.array([True, True]))
+        pGoodRest = pRest > np.min(parameters.pThreshold)
+        badinds = ~np.bitwise_and(bwconn, pGoodRest)
+        watershedRegions[badinds] = 0
+        print("\t Done. %0.02f seconds" % (time.time() - t1))
     else:
         pRest = 1.0
     outdict = {
