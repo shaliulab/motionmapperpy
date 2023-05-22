@@ -50,10 +50,11 @@ def findKLDivergences(data):
     return D, entropies
 
 
-def run_UMAP(data, parameters, save_model=True):
+def run_UMAP(data, parameters, save_model=True, metric="euclidean"):
     if not parameters.waveletDecomp:
         raise ValueError("UMAP not implemented without wavelet decomposition.")
-
+    print("Running UMAP with metric: " + parameters.umapMetric)
+    # TODO: Determine if want this normalization
     vals = np.sum(data, 1)
     if ~np.all(vals == 1):
         data = data / vals[:, None]
@@ -79,7 +80,7 @@ def run_UMAP(data, parameters, save_model=True):
         min_dist=min_dist,
         n_components=umap_output_dims,
         n_epochs=n_training_epochs,
-        metric="symmetric_kl",  # TODO: check if this is the right metric
+        metric=metric,  # TODO: check if this is the right metric
     )
     y = um.fit_transform(data)
     trainmean = np.mean(y, 0)
@@ -236,7 +237,6 @@ def findTemplatesFromData(
     cumSumGroupVals = [0] + np.cumsum(numInGroup).astype(int).tolist()
 
     for j in range(N):
-
         if cumSumGroupVals[j + 1] > cumSumGroupVals[j]:
             amps = signalAmps[vals == j + 1]
             idx2 = np.random.permutation(len(templates[j][:, 1]))[
@@ -254,7 +254,6 @@ def findTemplatesFromData(
 
 
 def mm_findWavelets(projections, numModes, parameters):
-
     amplitudes, f = findWavelets(
         projections,
         numModes,
@@ -276,7 +275,6 @@ def file_embeddingSubSampling(projectionFile, parameters):
     perplexity = parameters.training_perplexity
 
     if parameters.waveletDecomp:
-
         print("\n Loading wavelets")
         # projections = np.array(loadmat(projectionFile, variable_names=['projections'])['projections'])
         with h5py.File(
@@ -302,7 +300,12 @@ def file_embeddingSubSampling(projectionFile, parameters):
         parameters.perplexity = perplexity
         yData = run_tSne(signalData, parameters, projectionFile)
     elif parameters.method == "UMAP":
-        yData = run_UMAP(signalData, parameters, save_model=False)
+        yData = run_UMAP(
+            signalData,
+            parameters,
+            save_model=False,
+            metric=parameters.umapSubsampMetric,
+        )
     else:
         raise ValueError("Supported parameter.method are 'TSNE' or 'UMAP'")
     return yData, signalData, np.arange(parameters.training_numPoints), signalAmps
@@ -321,7 +324,7 @@ def get_wavelets(projectionFiles, parameters, i, ls=False):
         calc_and_write_wavelets(projectionFiles[i], parameters)
 
 
-def mm_findWavelets_ls(projections, numModes, parameters):
+def mm_findWavelets_ls(projections, parameters):
     t1 = time.time()
     print("\t Calculating wavelets, clock starting.")
 
@@ -334,11 +337,8 @@ def mm_findWavelets_ls(projections, numModes, parameters):
     print("Using Lomb-Scargle.")
 
     projections = np.array(projections)
-    # TODO: Remove this
-    # projections = projections[:, 0:23]
     t1 = time.time()
 
-    dt = 1.0 / parameters.samplingFreq
     minT = 1.0 / parameters.maxF
     maxT = 1.0 / parameters.minF
     Ts = minT * (
@@ -537,8 +537,6 @@ def runEmbeddingSubSampling(projectionDirectory, parameters):
     print(f"Number of files: {L}")
     print(f"Number of samples per file: {numPerDataSet}")
     numModes = parameters.pcaModes
-    # TODO: Remove
-    # numModes = 23
     numPeriods = parameters.numPeriods
 
     if numPerDataSet > parameters.training_numPoints:
@@ -557,7 +555,6 @@ def runEmbeddingSubSampling(projectionDirectory, parameters):
     useIdx = np.ones((numPerDataSet * L), dtype="bool")
 
     for i in tqdm(range(L)):
-
         print(
             "Finding training set contributions from data set %i/%i : \n%s"
             % (i + 1, L, projectionFiles[i])
@@ -661,7 +658,9 @@ def subsampled_tsne_from_projections(parameters, results_directory):
         trainingEmbedding = run_tSne(trainingSetData, parameters)
     elif parameters.method == "UMAP":
         print("Finding UMAP Embedding for Training Set")
-        trainingEmbedding = run_UMAP(trainingSetData, parameters)
+        trainingEmbedding = run_UMAP(
+            trainingSetData, parameters, metric=parameters.umapMetric
+        )
     else:
         raise ValueError("Supported parameter.method are 'TSNE' or 'UMAP'")
     hdf5storage.write(
@@ -678,7 +677,6 @@ def subsampled_tsne_from_projections(parameters, results_directory):
 
 
 def returnCorrectSigma_sparse(ds, perplexity, tol, maxNeighbors):
-
     highGuess = np.max(ds)
     lowGuess = 1e-12
 
@@ -705,7 +703,6 @@ def returnCorrectSigma_sparse(ds, perplexity, tol, maxNeighbors):
             "and lowGuess is %0.02f" % (sigma, highGuess, lowGuess)
         )
     while test:
-
         if P > perplexity:
             highGuess = sigma
         else:
@@ -923,6 +920,9 @@ def findTDistributedProjections_fmin(data, trainingData, trainingEmbedding, para
     return zValues, zCosts, zGuesses, inConvHull, meanMax, exitFlags
 
 
+import multiprocessing
+
+
 def findEmbeddings(
     projections, trainingData, trainingEmbedding, parameters, projectionFile
 ):
@@ -956,7 +956,6 @@ def findEmbeddings(
                 data = f["wavelets"][:]
                 data[~np.isfinite(data)] = 1e-12
                 data[data == 0] = 1e-12
-                f = "tmp"
         print("\n Loaded wavelets")
         # data, f = mm_findWavelets(projections, numModes, parameters)
         # if parameters.useGPU >= 0:
@@ -990,17 +989,27 @@ def findEmbeddings(
         outputStatistics.meanMax = meanMax
         outputStatistics.exitFlags = exitFlags
     elif parameters.method == "UMAP":
-        umapfolder = parameters["projectPath"] + "/UMAP/"
-        print("\tLoading UMAP Model.")
-        with open(umapfolder + "umap.model", "rb") as f:
-            um = pickle.load(f)
-        trainparams = np.load(umapfolder + "_trainMeanScale.npy", allow_pickle=True)
-        print("\tLoaded.")
-        embed_negative_sample_rate = parameters["embed_negative_sample_rate"]
-        um.negative_sample_rate = embed_negative_sample_rate
-        zValues = um.transform(data)
-        zValues = zValues - trainparams[0]
-        zValues = zValues * trainparams[1]
+        num_processes = multiprocessing.cpu_count()  # Number of available CPU cores
+        pool = multiprocessing.Pool(processes=parameters.numProcessors)
+        print(f"Using {parameters.numProcessors} processors for embedding")
+
+        data_chunks = np.array_split(
+            data, num_processes
+        )  # Split data into chunks for parallel processing
+
+        # Parallelize the UMAP transform
+        results = pool.starmap(
+            umap_transform, [(chunk, parameters) for chunk in data_chunks]
+        )
+
+        # Combine the results
+        zValues_list, trainparams_list = zip(*results)
+        zValues = np.concatenate(zValues_list)
+        trainparams = trainparams_list[
+            0
+        ]  # Assuming trainparams are the same for all chunks
+
+        # Continue with your code using zValues and trainparams
         outputStatistics = edict()
         outputStatistics.training_mean = trainparams[0]
         outputStatistics.training_scale = trainparams[1]
@@ -1012,12 +1021,24 @@ def findEmbeddings(
     return zValues, outputStatistics
 
 
+def umap_transform(data, parameters):
+    umapfolder = parameters["projectPath"] + "/UMAP/"
+    with open(umapfolder + "umap.model", "rb") as f:
+        um = pickle.load(f)
+    trainparams = np.load(umapfolder + "_trainMeanScale.npy", allow_pickle=True)
+    embed_negative_sample_rate = parameters["embed_negative_sample_rate"]
+    um.negative_sample_rate = embed_negative_sample_rate
+    zValues = um.transform(data)
+    zValues = zValues - trainparams[0]
+    zValues = zValues * trainparams[1]
+    return zValues, trainparams
+
+
 def file_embeddingSubSampling_batch(projectionFile, parameters):
     perplexity = parameters.training_perplexity
     numPoints = parameters.training_numPoints
 
     with h5py.File(projectionFile, "r") as hfile:
-
         projections_shape = hfile["projections"][:].T.shape
     # edge_file = (
     #     "../data/edge/"
@@ -1071,7 +1092,6 @@ def file_embeddingSubSampling_batch(projectionFile, parameters):
     print(f"Subsampling {N} points to {numPoints} points")
 
     if parameters.waveletDecomp:
-
         signalIdx = np.indices((projections_shape[0],))[0]
         print(f"signalIdx shape: {signalIdx.shape}")
         print(f"edge_mask shape: {edge_mask.shape}")
@@ -1102,6 +1122,9 @@ def file_embeddingSubSampling_batch(projectionFile, parameters):
         ) as f:
             data = f["wavelets"][sorted(signalIdx)]
         print("\n Loaded wavelets")
+
+        # get templates and real training data
+
         with open("list_of_working_files.txt", "a") as myfile:
             myfile.write(f"{projectionFile}\n")
         with open("list_of_working_files_length.txt", "a") as myfile:

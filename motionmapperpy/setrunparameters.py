@@ -114,14 +114,16 @@ def setRunParameters(parameters=None):
     training_perplexity = 20
 
     # %number of points to evaluate in each training set file
-    training_numPoints = 32000
+    training_numPoints = 36000
 
     # %minimum training set template length
     minTemplateLength = 1
 
     """%%%%%%%% UMAP Parameters %%%%%%%%"""
     # Size of local neighborhood for UMAP.
-    n_neighbors = 200
+    n_neighbors = 25
+    umapMetric = "symmetric_kl"
+    umapSubsampMetric = "symmetric_kl"
 
     # Negative sample rate while training.
     train_negative_sample_rate = 5
@@ -223,5 +225,11 @@ def setRunParameters(parameters=None):
 
     if not "projectPath" in parameters.keys():
         parameters.projectPath = projectPath
+
+    if not "umapMetric" in parameters.keys():
+        parameters.umapMetric = umapMetric
+
+    if not "umapSubsampMetric" in parameters.keys():
+        parameters.umapSubsampMetric = umapSubsampMetric
 
     return parameters

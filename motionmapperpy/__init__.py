@@ -10,7 +10,7 @@ from .motionmapper import (
 )
 from .setrunparameters import setRunParameters
 from .wavelet import findWavelets, fastWavelet_morlet_convolution_parallel
-from .wshed import findWatershedRegions
+from .wshed import findWatershedRegions, findWatershedRegions_training
 from .demoutils import (
     makeregionvideo_flies,
     getTransitions,
