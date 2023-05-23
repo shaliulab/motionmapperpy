@@ -948,7 +948,6 @@ def findEmbeddings(
             data, f = mm_findWavelets(projections, numModes, parameters)
         else:
             print("\n Loading wavelets")
-            # projections = np.array(loadmat(projectionFile, variable_names=['projections'])['projections'])
             with h5py.File(
                 f"{parameters.projectPath}/Wavelets/{pathlib.Path(projectionFile).stem}-wavelets.mat",
                 "r",
@@ -957,64 +956,75 @@ def findEmbeddings(
                 data[~np.isfinite(data)] = 1e-12
                 data[data == 0] = 1e-12
         print("\n Loaded wavelets")
-        # data, f = mm_findWavelets(projections, numModes, parameters)
-        # if parameters.useGPU >= 0:
-        #     data = data.get()
     else:
         print("Using projections for tSNE. No wavelet decomposition.")
         f = 0
         data = projections
+
+    raw_wavelets = data.copy()
+    # Apply condition on wavelets
+    data_sum = np.sum(raw_wavelets, 1)
+    idx_valid = data_sum > 4e2  # indices of valid points
+
+    # Only valid points are embedded
+    valid_data = data[idx_valid]
+    print(f"Valid data shape: {valid_data.shape} out of {data.shape}")
+
     data = data / np.sum(data, 1)[:, None]
 
     print("Finding Embeddings")
     t1 = time.time()
     if parameters.method == "TSNE":
         (
-            zValues,
+            zValues_temp,
             zCosts,
             zGuesses,
             inConvHull,
             meanMax,
             exitFlags,
         ) = findTDistributedProjections_fmin(
-            data, trainingData, trainingEmbedding, parameters
+            valid_data, trainingData, trainingEmbedding, parameters
         )
 
-        outputStatistics = edict()
-        outputStatistics.zCosts = zCosts
-        outputStatistics.f = f
-        outputStatistics.numModes = numModes
-        outputStatistics.zGuesses = zGuesses
-        outputStatistics.inConvHull = inConvHull
-        outputStatistics.meanMax = meanMax
-        outputStatistics.exitFlags = exitFlags
+        outputStatistics_temp = edict()
+        outputStatistics_temp.zCosts = zCosts
+        outputStatistics_temp.f = f
+        outputStatistics_temp.numModes = numModes
+        outputStatistics_temp.zGuesses = zGuesses
+        outputStatistics_temp.inConvHull = inConvHull
+        outputStatistics_temp.meanMax = meanMax
+        outputStatistics_temp.exitFlags = exitFlags
     elif parameters.method == "UMAP":
-        num_processes = multiprocessing.cpu_count()  # Number of available CPU cores
+        # Split valid data into chunks for parallel processing
+
         pool = multiprocessing.Pool(processes=parameters.numProcessors)
         print(f"Using {parameters.numProcessors} processors for embedding")
+        valid_data_chunks = np.array_split(valid_data, parameters.numProcessors)
 
-        data_chunks = np.array_split(
-            data, num_processes
-        )  # Split data into chunks for parallel processing
-
-        # Parallelize the UMAP transform
+        # Parallelize the UMAP transform for valid data chunks
         results = pool.starmap(
-            umap_transform, [(chunk, parameters) for chunk in data_chunks]
+            umap_transform, [(chunk, parameters) for chunk in valid_data_chunks]
         )
 
         # Combine the results
-        zValues_list, trainparams_list = zip(*results)
-        zValues = np.concatenate(zValues_list)
+        zValues_temp_list, trainparams_list = zip(*results)
+        zValues_temp = np.concatenate(zValues_temp_list)
         trainparams = trainparams_list[
             0
         ]  # Assuming trainparams are the same for all chunks
 
-        # Continue with your code using zValues and trainparams
         outputStatistics = edict()
         outputStatistics.training_mean = trainparams[0]
         outputStatistics.training_scale = trainparams[1]
     else:
         raise ValueError("Supported parameter.method are 'TSNE' or 'UMAP'")
+
+        # Initialize zValues with 'NA' for all points
+    zValues = np.full((data.shape[0], 2), np.nan)
+
+    # Assign computed embeddings to valid points
+    zValues[idx_valid] = zValues_temp
+
     del data
     print("Embeddings found in %0.02f seconds." % (time.time() - t1))
 
@@ -1035,17 +1045,11 @@ def umap_transform(data, parameters):
 
 
 def file_embeddingSubSampling_batch(projectionFile, parameters):
-    perplexity = parameters.training_perplexity
     numPoints = parameters.training_numPoints
 
     with h5py.File(projectionFile, "r") as hfile:
         projections_shape = hfile["projections"][:].T.shape
-    # edge_file = (
-    #     "../data/edge/"
-    #     + "-".join(pathlib.Path(projectionFile).stem.split("-")[:3])
-    #     + "_edge.mat"
-    # )
-    # TODO: Remove
+
     edge_file = (
         "/Genomics/ayroleslab2/scott/git/lts-manuscript/analysis/sample_tracks/edge/"
         + pathlib.Path(projectionFile).stem.split("-")[0]
@@ -1090,12 +1094,25 @@ def file_embeddingSubSampling_batch(projectionFile, parameters):
         numPoints = N
 
     print(f"Subsampling {N} points to {numPoints} points")
-
+    # 20230514-mmpy-lts-all-pchip5-headprobinterpy0xhead-medianwin5-gaussian-lombscargle-dynamicwinomega020-singleflysampledtracks
+    # cp -r /Gtt/git/lts-manuscript/analysis/20230514-mmpy-lts-all-pchip5-headprobinterpy0xhead-medianwin5-gaussian-lombscargle-dynamicwinomega020-singleflysampledtracks/Wavelets ./
     if parameters.waveletDecomp:
+        # TODO: Don't be stupid. Load the wavelets once and then subsample them.
+        with h5py.File(
+            f"{parameters.projectPath}/Wavelets/{pathlib.Path(projectionFile).stem}-wavelets.mat",
+            "r",
+        ) as f:
+            wlets = f["wavelets"][:]
+            print(f"wavelets shape: {wlets.shape}")
+            sum_mask = np.sum(wlets, axis=1) < 4e2
+            print(f"sum_mask shape: {sum_mask.shape}")
+            print(
+                f"Fraction with amp lower than 4e2: {np.sum(sum_mask)/projections_shape[0]}"
+            )
         signalIdx = np.indices((projections_shape[0],))[0]
         print(f"signalIdx shape: {signalIdx.shape}")
         print(f"edge_mask shape: {edge_mask.shape}")
-        mask = np.any(np.vstack([edge_mask, missingness_mask]).T, axis=1)
+        mask = np.any(np.vstack([edge_mask, missingness_mask, sum_mask]).T, axis=1)
         print(f"mask shape: {mask.shape}")
         signalIdx = signalIdx[[not mask_ele for mask_ele in mask]]
         # Subset to remove edge calls

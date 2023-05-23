@@ -39,7 +39,7 @@ def wshedTransform(
             610,
             rangeVals=[-np.abs(zValues).max() - 15, np.abs(zValues).max() + 15],
         )
-        density[density < 0.75e-5] = 0
+        density[density < 8e-6] = 0
     else:
         bounds, xx, density = findPointDensity(
             zValues,
@@ -49,7 +49,7 @@ def wshedTransform(
         )
 
     wshed = watershed(-density, connectivity=10)
-    wshed[density < 0.75e-5] = 0
+    wshed[density < 8e-6] = 0
 
     numRegs = len(np.unique(wshed)) - 1
 
@@ -64,13 +64,13 @@ def wshedTransform(
         _, xx, density = findPointDensity(
             zValues,
             sigma,
-            610,
+            611,
             rangeVals=[-np.abs(zValues).max() - 15, np.abs(zValues).max() + 15],
         )
         if training:
-            density[density < 0.75e-3] = 0
+            density[density < 8e-6] = 0
             wshed = watershed(-density, connectivity=10)
-            wshed[density < 0.75e-3] = 0
+            wshed[density < 8e-6] = 0
         else:
             wshed = watershed(-density, connectivity=10)
 
@@ -317,8 +317,12 @@ def findWatershedRegions(
         wbounds = (x_data, y_data)
         density = f["density"][:]
         LL = f["LL"][:]
+        print(f"zValues shape: {zValues.shape}")
+        zValues_for_density = zValues[~np.isnan(zValues).any(axis=1), :]
+        print(f"zValues_for_density shape: {zValues_for_density.shape}")
+
         _, _, _, _, density = wshedTransform(
-            zValues, minimum_regions, startsigma, tsnefolder, saveplot=False
+            zValues_for_density, minimum_regions, startsigma, tsnefolder, saveplot=False
         )
     else:
         LL, wbounds, sigma, xx, density = wshedTransform(
@@ -357,8 +361,18 @@ def findWatershedRegions(
     print("Assigning watershed regions...")
     print(f"zValues shape: {zValues.shape}")
     print(f"xx shape: {xx.shape}")
-    watershedRegions = np.digitize(zValues, xx.flatten())
-    watershedRegions = LL.T[watershedRegions[:, 1], watershedRegions[:, 0]]
+    # A large number that's guaranteed to be bigger than any element in zValues
+    watershedRegions = np.full(zValues.shape[0], np.nan)
+
+    # Create a mask of non-NaN elements in zValues
+    mask_non_nan = ~np.isnan(zValues).any(axis=1)
+
+    # Compute the digitization only for the non-NaN elements in zValues
+    wr_tmp = np.digitize(zValues[mask_non_nan, :], xx.flatten()[:-1])
+    print(f"shape of wr_tmp: {wr_tmp.shape}")
+    print(f"max watershed region: {watershedRegions.max()}")
+    wr_tmp = LL.T[wr_tmp[:, 1], wr_tmp[:, 0]]
+    watershedRegions[mask_non_nan] = wr_tmp
 
     if parameters.method == "TSNE":
         print("Calculating velocity distributions...")
@@ -427,7 +441,7 @@ def findWatershedRegions(
         matlab_compatible=True,
     )
     print("\t tempsave done.")
-
+    raise Exception("Not making groups for now -- final save is done.")
     groups = makeGroupsAndSegments(
         watershedRegions, zValLens, min_length=min_length_videos
     )
@@ -530,12 +544,13 @@ def findWatershedRegions_training(
         saveplot=True,
         training=True,
         use_awkde=True,
-        alpha=1,
+        alpha=0.5,
         glob_bw=0.042,
     )
 
     print("Assigning watershed regions...")
-    watershedRegions = np.digitize(zValues, xx)
+    watershedRegions = np.digitize(zValues, xx.flatten())
+    print(f"LL shape: {LL.shape}")
     watershedRegions = LL[watershedRegions[:, 1], watershedRegions[:, 0]]
 
     if parameters.method == "TSNE":
