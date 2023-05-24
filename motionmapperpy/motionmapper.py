@@ -463,9 +463,7 @@ def calc_and_write_wavelets_ls(projectionFile, parameters):
         if not os.path.exists(
             f"{parameters.projectPath}/Wavelets/{pathlib.Path(projectionFile).stem}-wavelets.mat"
         ):
-            data, freqs, win_sizes = mm_findWavelets_ls(
-                projections, parameters.pcaModes, parameters
-            )
+            data, freqs, win_sizes = mm_findWavelets_ls(projections, parameters)
             print(f"\n Saving wavelets: {data.shape}")
             with h5py.File(
                 f"{parameters.projectPath}/Wavelets/{pathlib.Path(projectionFile).stem}-wavelets.mat",
