@@ -29,9 +29,9 @@ def wshedTransform(
     glob_bw=None,
 ):
     date = datetime.now().strftime("%Y%m%d")
-    print("Starting watershed transform...")
 
     if use_awkde:
+        print("Starting point density estimation using AWKDE...")
         bounds, xx, density = findPointDensity_awkde(
             zValues,
             alpha,
@@ -41,13 +41,15 @@ def wshedTransform(
         )
         density[density < 8e-6] = 0
     else:
+        print("Starting point density estimation...")
         bounds, xx, density = findPointDensity(
             zValues,
             sigma,
             610,
             rangeVals=[-np.abs(zValues).max() - 15, np.abs(zValues).max() + 15],
         )
-
+    print("Done")
+    print("Running watershed algorithm")
     wshed = watershed(-density, connectivity=10)
     wshed[density < 8e-6] = 0
 
@@ -76,42 +78,57 @@ def wshedTransform(
 
         numRegs = len(np.unique(wshed)) - 1
         print("\t Sigma %0.2f, Regions %i" % (sigma, numRegs), end="\r")
+
     for i, wreg in enumerate(np.unique(wshed)):
         wshed[wshed == wreg] = i
     wbounds = np.where(roberts(wshed).astype("bool"))
     wbounds = (wbounds[1], wbounds[0])
+
     if saveplot:
-        bend = plt.get_backend()
-        plt.switch_backend("Agg")
+        png_path=f"{tsnefolder}{date}_sigma{str(round(sigma,3)).replace('.','_')}_regions{numRegs}_zWshed.png"
+        save_watershed_plot(wshed, density, wbounds, png_path)
+        png_path=f"{tsnefolder}{date}_sigma{str(round(sigma,3)).replace('.','_')}_regions{numRegs}_zWshed_scatter.png"
+        save_scatter_plot(zValues, png_path)
 
-        fig, axes = plt.subplots(1, 2, figsize=(10, 6))
-        fig.subplots_adjust(0, 0, 1, 1, 0, 0)
-        ax = axes[0]
-        ax.imshow(randomizewshed(wshed), origin="lower", cmap=bmapcmap)
-        for i in np.unique(wshed)[1:]:
-            fontsize = 8
-            xinds, yinds = np.where(wshed == i)
-            ax.text(
-                np.mean(yinds) - fontsize,
-                np.mean(xinds) - fontsize,
-                str(i),
-                fontsize=fontsize,
-                fontweight="bold",
-            )
-        ax.axis("off")
-
-        ax = axes[1]
-        ax.imshow(density, origin="lower", cmap=bmapcmap)
-        ax.scatter(wbounds[0], wbounds[1], color="k", s=0.1)
-        ax.axis("off")
-        fig.savefig(
-            f"{tsnefolder}{date}_sigma{str(round(sigma,3)).replace('.','_')}_regions{numRegs}_zWshed.png"
-        )
-        plt.close()
-        plt.switch_backend(bend)
     return wshed, wbounds, sigma, xx, density
 
+def save_scatter_plot(zValues, png_path):
+    plt.scatter(zValues[:,0], zValues[:, 1])
+    plt.savefig(png_path)
 
+def save_watershed_plot(wshed, density, wbounds, png_path):
+    bend = plt.get_backend()
+    plt.switch_backend("Agg")
+
+    fig, axes = plt.subplots(1, 2, figsize=(10, 6))
+    fig.subplots_adjust(0, 0, 1, 1, 0, 0)
+    ax = axes[0]
+    ax.imshow(randomizewshed(wshed), origin="lower", cmap=bmapcmap)
+    for i in np.unique(wshed)[1:]:
+        fontsize = 8
+        xinds, yinds = np.where(wshed == i)
+        ax.text(
+            np.mean(yinds) - fontsize,
+            np.mean(xinds) - fontsize,
+            str(i),
+            fontsize=fontsize,
+            fontweight="bold",
+        )
+    ax.axis("off")
+
+    ax = axes[1]
+    ax.imshow(density, origin="lower", cmap=bmapcmap)
+    ax.scatter(wbounds[0], wbounds[1], color="k", s=0.1)
+    ax.axis("off")
+    
+    print(f"Saving --> {png_path}")
+
+    fig.savefig(
+        png_path
+    )
+    plt.close()
+    plt.switch_backend(bend)
+    
 def velGMM(ampV, parameters, projectPath, saveplot=True, minimum_regions=50):
     date = datetime.now().strftime("%Y%m%d")
     if parameters.method == "TSNE":
@@ -373,6 +390,7 @@ def findWatershedRegions(
     print(f"max watershed region: {watershedRegions.max()}")
     wr_tmp = LL.T[wr_tmp[:, 1], wr_tmp[:, 0]]
     watershedRegions[mask_non_nan] = wr_tmp
+    watershedRegions=watershedRegions.astype(np.int64)
 
     if parameters.method == "TSNE":
         print("Calculating velocity distributions...")
@@ -432,16 +450,18 @@ def findWatershedRegions(
         "pRest": pRest,
         "wbounds": wbounds,
     }
+    mat_file=f"{tsnefolder}{date}_minregions{minimum_regions}_zVals_wShed_groups_prevregions.mat"
+
     hdf5storage.write(
         data=outdict,
         path="/",
         truncate_existing=True,
-        filename=f"{tsnefolder}{date}_minregions{minimum_regions}_zVals_wShed_groups_prevregions.mat",
+        filename=mat_file,
         store_python_metadata=False,
         matlab_compatible=True,
     )
     print("\t tempsave done.")
-    raise Exception("Not making groups for now -- final save is done.")
+    # raise Exception("Not making groups for now -- final save is done.")
     groups = makeGroupsAndSegments(
         watershedRegions, zValLens, min_length=min_length_videos
     )
@@ -469,7 +489,7 @@ def findWatershedRegions(
     )
 
     print("All data saved.")
-
+    return zValues
 
 def findWatershedRegions_training(
     parameters,
@@ -478,6 +498,7 @@ def findWatershedRegions_training(
     pThreshold=None,
     saveplot=True,
     endident="*_pcaModes.mat",
+    step=1,
 ):
     date = datetime.now().strftime("%Y%m%d")
     projectionfolder = parameters.projectPath + "/Projections/"
@@ -497,35 +518,27 @@ def findWatershedRegions_training(
         parameters.pThreshold = pThreshold
 
     zValues = []
-    projfiles = glob.glob(tsnefolder + "/*" + endident)
     t1 = time.time()
 
     zValNames = []
     zValLens = []
     ampVels = []
-    for pi, projfile in enumerate(projfiles):
-        fname = projfile.split("/")[-1].split(".")[0]
-        print(f"Processing {projfile}")
-        zValNames.append(fname)
-        print(
-            "%i/%i Loading embedding for %s %0.02f seconds."
-            % (pi + 1, len(projfiles), fname, time.time() - t1)
-        )
-        with h5py.File(tsnefolder + fname + ".mat", "r") as h5file:
-            shape = h5file["trainingEmbedding"][:].T.shape
-            print(f"shape of zVals: {shape}")
-            print(h5file["trainingEmbedding"][:].T[0:5, :])
-            zValues.append(h5file["trainingEmbedding"][:].T)
-        ampVels.append(
-            np.concatenate(
-                ([0], np.linalg.norm(np.diff(zValues[-1], axis=0), axis=1)), axis=0
-            )
-        )
-        # with h5py.File(projectionfolder + fname + '_zAmps_vel.mat', 'r') as h5file:
-        #     ampVels.append(h5file['ampvel'][:].T.squeeze())
+    
 
-        assert zValues[-1].shape[0] == ampVels[-1].shape[0]
-        zValLens.append(zValues[-1].shape[0])
+    with h5py.File(tsnefolder + "training_embedding.mat", "r") as h5file:
+        shape = h5file["trainingEmbedding"][:].T.shape
+        print(f"shape of zVals: {shape}")
+        print(h5file["trainingEmbedding"][:].T[0:5, :])
+        zValues.append(h5file["trainingEmbedding"][:].T)
+    
+    ampVels.append(
+        np.concatenate(
+            ([0], np.linalg.norm(np.diff(zValues[-1], axis=0), axis=1)), axis=0
+        )
+    )
+
+    assert zValues[-1].shape[0] == ampVels[-1].shape[0]
+    zValLens.append(zValues[-1].shape[0])
 
     zValues = np.concatenate(zValues, 0)
     ampVels = np.concatenate(ampVels, 0)
@@ -533,11 +546,12 @@ def findWatershedRegions_training(
     zValLens = np.array(zValLens)
     # print(zValNames)
     zValNames = np.array(zValNames, dtype=object)
-    print(f"zValues shape going into watershed: {zValues.shape}")
+    zValues_transform=zValues[::step]
+    print(f"zValues shape going into watershed: {zValues_transform.shape}")
     # raise Exception("stop here")
-    print("Starting watershed transform with AWKDE...")
+    # training
     LL, wbounds, sigma, xx, density = wshedTransform(
-        zValues,
+        zValues_transform,
         minimum_regions,
         startsigma,
         tsnefolder,
@@ -547,9 +561,10 @@ def findWatershedRegions_training(
         alpha=0.5,
         glob_bw=0.042,
     )
+    print(f"Watershed transform completed. Sigma = {sigma}")
 
     print("Assigning watershed regions...")
-    watershedRegions = np.digitize(zValues, xx.flatten())
+    watershedRegions = np.digitize(zValues_transform, xx.flatten())
     print(f"LL shape: {LL.shape}")
     watershedRegions = LL[watershedRegions[:, 1], watershedRegions[:, 0]]
 
@@ -576,11 +591,13 @@ def findWatershedRegions_training(
             "pRest": pRest,
             "wbounds": wbounds,
         }
+        mat_file=f"{tsnefolder}{date}_sigma{str(round(sigma,3)).replace('.','_')}_minregions{minimum_regions}_zVals_wShed_groups.mat"
+
         hdf5storage.write(
             data=outdict,
             path="/",
             truncate_existing=True,
-            filename=f"{tsnefolder}{date}_sigma{str(round(sigma,3)).replace('.','_')}_minregions{minimum_regions}_zVals_wShed_groups.mat",
+            filename=mat_file,
             store_python_metadata=False,
             matlab_compatible=True,
         )
@@ -620,3 +637,4 @@ def findWatershedRegions_training(
         matlab_compatible=True,
     )
     print("\t tempsave done.")
+    return zValues_transform

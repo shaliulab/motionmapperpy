@@ -37,6 +37,8 @@ def findWavelets(
             f -> frequencies used in wavelet transforms (Hz)
 
     """
+    raise NotImplementedError()
+
     t1 = time.time()
     print("\t Calculating wavelets, clock starting.")
 

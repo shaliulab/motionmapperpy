@@ -1,3 +1,5 @@
+import itertools
+import logging
 import glob
 import multiprocessing as mp
 import os
@@ -9,9 +11,11 @@ import matplotlib
 matplotlib.use("Agg")
 
 import pickle
+import logging
 from pathlib import Path
 
 import h5py
+import codetiming
 import hdf5storage
 import matplotlib.pyplot as plt
 import numpy as np
@@ -23,13 +27,25 @@ from skimage.filters import roberts
 from skimage.segmentation import watershed
 from sklearn.manifold import TSNE
 from sklearn.neighbors import NearestNeighbors
-from umap import UMAP
+from umap import UMAP as cpuUMAP
+import joblib
 import numpy as np
 from scipy.signal import lombscargle
 
 from .mmutils import findPointDensity, gencmap
 from .setrunparameters import setRunParameters
 from .wavelet import findWavelets
+
+# MIN_POWER=4e2
+MIN_POWER=1
+
+logger = logging.getLogger(__name__)
+
+try:
+    from cuml.manifold.umap import UMAP as cumlUMAP
+except ModuleNotFoundError:
+    cumlUMAP=None
+
 
 """Core t-SNE MotionMapper functions."""
 
@@ -51,6 +67,16 @@ def findKLDivergences(data):
 
 
 def run_UMAP(data, parameters, save_model=True, metric="euclidean"):
+    """
+    Project data to lower dimensionality space computed using the UMAP algorithm
+
+    Arguments:
+
+        data (np.array): Dataset with observations in the rows and features in the columns
+    
+    Returns:
+        y (np.array): Mean centered projected dataset
+    """
     if not parameters.waveletDecomp:
         raise ValueError("UMAP not implemented without wavelet decomposition.")
     print("Running UMAP with metric: " + parameters.umapMetric)
@@ -74,6 +100,15 @@ def run_UMAP(data, parameters, save_model=True, metric="euclidean"):
         parameters["n_training_epochs"],
     )
 
+    if parameters.useGPU >= 0:
+        assert cumlUMAP is not None, f"cuml is not available. Please set useGPU to -1"
+        UMAP=cumlUMAP
+        n_training_epochs=2000
+        print("Using GPU UMAP")
+    else:
+        UMAP=cpuUMAP
+        print("Using CPU UMAP")
+    
     um = UMAP(
         n_neighbors=n_neighbors,
         negative_sample_rate=train_negative_sample_rate,
@@ -82,6 +117,7 @@ def run_UMAP(data, parameters, save_model=True, metric="euclidean"):
         n_epochs=n_training_epochs,
         metric=metric,  # TODO: check if this is the right metric
     )
+
     y = um.fit_transform(data)
     trainmean = np.mean(y, 0)
     scale = parameters["rescale_max"] / np.abs(y).max()
@@ -94,8 +130,15 @@ def run_UMAP(data, parameters, save_model=True, metric="euclidean"):
             umapfolder + "_trainMeanScale.npy",
             np.array([trainmean, scale], dtype=object),
         )
-        with open(umapfolder + "umap.model", "wb") as f:
-            pickle.dump(um, f)
+        if parameters.useGPU>=0:
+
+            model_file=umapfolder+"umap.joblib"
+            joblib.dump(um, model_file)
+
+        else:
+            model_file=umapfolder + "umap.model"
+            with open(model_file, "wb") as f:
+                pickle.dump(um, f)
 
     return y
 
@@ -282,6 +325,7 @@ def file_embeddingSubSampling(projectionFile, parameters):
             "r",
         ) as f:
             data = f["signaldata"][:]  # [signalIdx]
+            # subsampled timepoints x (freqs * n_pcs)
 
         print(f"Data shape: {data.shape}")
         print("\n Loaded wavelets")
@@ -315,28 +359,50 @@ from tqdm import tqdm
 
 
 def get_wavelets(projectionFiles, parameters, i, ls=False):
-    # L = len(projectionFiles)
-    # for i in tqdm(range(L)):
-    print(f"Processing {projectionFiles[i]}")
-    if ls:
-        calc_and_write_wavelets_ls(projectionFiles[i], parameters)
+
+    if isinstance(i, int):
+        projectionFile=projectionFiles[i]
+    elif isinstance(i, str):
+        projectionFiles=[projectionFile for projectionFile in projectionFiles if os.path.splitext(os.path.basename(projectionFile))[0]==i]
+        if len(projectionFiles)>1 or len(projectionFiles) == 0:
+            raise ValueError(f"{len(projectionFiles)} match with {i}")
+        projectionFile=projectionFiles[0]
     else:
-        calc_and_write_wavelets(projectionFiles[i], parameters)
+        raise ValueError("Please pass an integer or a dataset name")
+
+    print(f"Processing {projectionFile}")
+    if ls:
+        calc_and_write_wavelets_ls(projectionFile, parameters)
+    else:
+        calc_and_write_wavelets(projectionFile, parameters)
 
 
 def mm_findWavelets_ls(projections, parameters):
+    """
+
+    Args:
+        projections (np.array): Pose stored as a table where rows represent frames and columns represent features
+        parameters (OrderedDict): Obtained with mmpy.setRunParameters()
+
+    Returns:
+        amplitudes.T (np.array): frames x frequencies. All frequencies of the first body part come first, then for the second body part, and so on
+        f (list): frequencies screened
+        window_sizes: the ith element contains the amount of data (number of contiguous time points) fed to the algorithm to compute the power of the ith frequency
+    """
+
     t1 = time.time()
-    print("\t Calculating wavelets, clock starting.")
+    logger.info("\t Calculating wavelets, clock starting.")
 
     import multiprocessing as mp
     import numpy as np
 
     if parameters.numProcessors < 0:
         parameters.numProcessors = mp.cpu_count()
-    print("\t Using #%i CPUs." % parameters.numProcessors)
-    print("Using Lomb-Scargle.")
+    logger.info("\t Using #%i CPUs." % parameters.numProcessors)
+    logger.info("Using Lomb-Scargle.")
 
     projections = np.array(projections)
+
     t1 = time.time()
 
     minT = 1.0 / parameters.maxF
@@ -351,44 +417,83 @@ def mm_findWavelets_ls(projections, parameters):
     f = (1.0 / Ts)[::-1]
 
     # TODO: Move this to parameters
-    omega0 = 20
+    # This expression computes the needed window sizes for each frequency
+    omega0 = parameters.omega0
     scales = (omega0 + np.sqrt(2 + omega0**2)) / (4 * np.pi * f)
+
     window_sizes = np.round(scales * parameters.samplingFreq).astype(int)
-    print(f"Window sizes: {window_sizes}")
-    print(f"Frequencies: {f}, shape: {f.shape}")
+    logger.info(f"Window sizes: {window_sizes}")
+    logger.info(f"Frequencies: {f}, shape: {f.shape}")
 
     N = projections.shape[0]
-    print(f"Projection shape: {projections.shape}")
-    print("No normalization -- precentering though.")
-    try:
-        pool = mp.Pool(parameters.numProcessors)
-        print(f"Scarglin' {projections.shape[1]} projections")
-        amplitudes = pool.starmap(
-            rolling_lombscargle,
-            [
-                (
-                    projections[:, i],
-                    np.linspace(0, N / parameters.samplingFreq, N),
-                    f.astype(float),
-                    window_sizes,
+    logger.info(f"Projection shape: {projections.shape}")
+    logger.info("No normalization -- precentering though.")
+    indices=np.arange(0, projections.shape[0], parameters.wavelet_downsample)
+    
+    with codetiming.Timer(text="Lomb-Scargle algorithm: {:.2f} seconds"):
+        try:
+            if parameters.numProcessors>1:
+                pool = mp.Pool(parameters.numProcessors)
+                logger.info(f"Scarglin' {projections.shape[1]} projections")
+                amplitudes = pool.starmap(
+                    rolling_lombscargle,
+                    [
+                        (
+                            projections[:, i],
+                            np.linspace(0, N / parameters.samplingFreq, N),
+                            f.astype(float),
+                            window_sizes,
+                            parameters.wavelet_downsample
+                        )
+                        for i in range(projections.shape[1])
+                    ],
                 )
-                for i in range(projections.shape[1])
-            ],
-        )
-        amplitudes = np.concatenate(amplitudes, 0)
-        amplitudes[~np.isfinite(amplitudes)] = 0
-        print(f"Done Scarglin' -- shape: {amplitudes.shape}")
-        pool.close()
-        pool.join()
-    except Exception as E:
-        pool.close()
-        pool.join()
-        raise E
-    print("\t Done at %0.02f seconds." % (time.time() - t1))
-    return amplitudes.T, f, window_sizes
+            else:
+                amplitudes=[]
+                for i in range(projections.shape[1]):
+                    amplitudes.append(
+                        rolling_lombscargle(
+                            projections[:, i],
+                            np.linspace(0, N / parameters.samplingFreq, N),
+                            f.astype(float),
+                            window_sizes,
+                            skip=parameters.wavelet_downsample
+                        )
+                    )
+                    
+            amplitudes = np.concatenate(amplitudes, 0)
+            amplitudes[~np.isfinite(amplitudes)] = 0
+            logger.info(f"Done Scarglin' -- shape: {amplitudes.shape}")
+            pool.close()
+            pool.join()
+        except Exception as E:
+            pool.close()
+            pool.join()
+            raise E
+
+    logger.info("\t Done at %0.02f seconds." % (time.time() - t1))
+    return amplitudes.T, f, window_sizes, indices
 
 
-def rolling_window_with_padding(arr, window_size):
+def rolling_window_with_padding(arr, window_size, skip=1):
+    """
+    Create a set of rolling windows based on some input and a window size
+
+    Windows are created from the input so that as many windows as positions in the input are available
+    by padding the edges with the first and last values of the input (edge mode)
+    Once the input is edge-padded, the windows are themselves created using a numpy trick
+    to not copy the same values in memory
+
+    Returns:
+        If arr is 1D:
+            the output has the same number of rows as the length of the input
+            each row represents one window
+            the number of columns is the window size
+        
+        If arr is > 1D:
+            ?
+    """
+
     # TODO: double check this
     padding = (window_size - 1) // 2
     padded_arr = np.pad(arr, (padding, padding), mode="edge")
@@ -396,35 +501,69 @@ def rolling_window_with_padding(arr, window_size):
         padded_arr.shape[-1] - window_size + 1,
         window_size,
     )
+    # assert shape[0] == padded_arr.shape[0], f"{shape[0]} != {padded_arr.shape[0]}"
     strides = padded_arr.strides + (padded_arr.strides[-1],)
+    strides=tuple([strides[0]*skip] + list(strides[1:]))
+    shape=tuple([shape[0]//skip] + list(shape[1:]))
+
 
     return np.lib.stride_tricks.as_strided(padded_arr, shape=shape, strides=strides)
 
 
-def rolling_lombscargle(data, sampling_times, freqs, window_sizes):
-    # print(f"Inside rolling_lombscargle - data shape: {data.shape}")  # Debug print
-    # print(
-    #     f"Inside rolling_lombscargle - sampling_times shape: {sampling_times.shape}"
-    # )  # Debug print
-    # print(f"Inside rolling_lombscargle - freqs shape: {freqs.shape}")  # Debug print
+def rolling_lombscargle(data, sampling_times, freqs, window_sizes, skip=1):
+    """
+    Compute the lombgscargle periodogram of a timeseries
+
+    The power of each frequency provided in `freqs` is computed at every position of the 
+    timeseries using the data provided within a window of a corresponding window_size
+
+    The window size of the ith frequency is given by the ith position in the window_sizes array
+    The data is not required to be equidistnat over time, and instead you need to pass the sampling point
+    t_i of each datapoint d_i
+
+    Args:
+
+        data (np.array): 1D timeseries
+        sampling_times (np.array): The ith position contains the sampling time of the ith data point
+        freqs (np.array): Frequencies for which the power should be computed 
+        window_sizes (np.array): Amount of time used to compute the frequencies. Low frequencies require less time
+            because the signal changes more slowly, which means less temporal resolution is possible. Therefore,
+            you should pass window sizes that increase in size as the frequencies decrease
+            
+    
+    Returns:
+        periodograms.T (np.array): frequencies x windows
+
+    Learn more -> https://youtu.be/y7KLbd7n75g?si=o8KideRnzhBYpFKx
+
+    """
 
     # Initialize an empty array to store the Lomb-Scargle periodograms
     periodograms = np.zeros((data.size, freqs.size))
 
     # Loop through each frequency and its corresponding window size
     for f_idx, (freq, window_size) in enumerate(zip(freqs, window_sizes)):
-        print(f"On frequency {f_idx} of {freqs.size}")
+        logger.debug(f"On frequency {f_idx} of {freqs.size}")
         # print(
         #     f"Inside rolling_lombscargle -  freq: {freq}, win size: {window_size}"
         # )  # Debug print
         # print(f"Inside rolling_lombscargle -  freq: {freq}")  # Debug print
-        windows = rolling_window_with_padding(data, window_size)
+        windows = rolling_window_with_padding(data, window_size, skip=1)
+        number_of_windows, window_size_ = windows.shape
+
         # print(
         #     f"Inside rolling_lombscargle -  windows shape: {windows.shape}"
         # )  # Debug print
         windows_sampling_times = rolling_window_with_padding(
-            sampling_times, window_size
+            sampling_times, window_size, skip=1
         )
+
+        indices=np.arange(0, number_of_windows, skip)
+        windows=windows[::skip, ...]
+        number_of_windows, window_size_ = windows.shape
+        windows_sampling_times=windows_sampling_times[::skip, ...]
+        assert len(indices) == number_of_windows
+
 
         for i, (window, times) in enumerate(zip(windows, windows_sampling_times)):
             angular_frequency = 2 * np.pi * freq
@@ -446,7 +585,8 @@ def rolling_lombscargle(data, sampling_times, freqs, window_sizes):
             if np.all(np.isnan(periodogram)):
                 periodogram = 0
 
-            periodograms[i, f_idx] = periodogram
+            periodograms[indices[i], f_idx] = periodogram
+    periodograms=periodograms[indices, :]
     return periodograms.T
 
 
@@ -456,6 +596,7 @@ def calc_and_write_wavelets_ls(projectionFile, parameters):
 
     with h5py.File(projectionFile, "r") as hfile:
         projections = hfile["projections"][:].T
+        node_names = hfile["node_names"][:]
     projections = np.array(projections)
 
     if parameters.waveletDecomp:
@@ -463,7 +604,18 @@ def calc_and_write_wavelets_ls(projectionFile, parameters):
         if not os.path.exists(
             f"{parameters.projectPath}/Wavelets/{pathlib.Path(projectionFile).stem}-wavelets.mat"
         ):
-            data, freqs, win_sizes = mm_findWavelets_ls(projections, parameters)
+            data, freqs, win_sizes, indices = mm_findWavelets_ls(projections, parameters)
+            freq_names=[]
+            for part in node_names:
+                for freq in freqs:
+                    freq_names.append(
+                        part.decode() + "_x_" + str(round(freq, 4))
+                    )
+                    freq_names.append(
+                        part.decode() + "_y_" + str(round(freq, 4))
+                    )
+            
+            assert len(freq_names) == data.shape[1]
             print(f"\n Saving wavelets: {data.shape}")
             with h5py.File(
                 f"{parameters.projectPath}/Wavelets/{pathlib.Path(projectionFile).stem}-wavelets.mat",
@@ -472,8 +624,12 @@ def calc_and_write_wavelets_ls(projectionFile, parameters):
             ) as f:
                 print("No compression")
                 f.create_dataset("wavelets", data=data)
+                f.create_dataset("indices", data=indices)
                 f.create_dataset("f", data=freqs)
                 f.create_dataset("win_sizes", data=win_sizes)
+                f.create_dataset("node_names", data=node_names)
+                f.create_dataset("freq_names", data=freq_names)
+                
 
 
 def calc_and_write_wavelets(projectionFile, parameters):
@@ -528,29 +684,34 @@ def runEmbeddingSubSampling(projectionDirectory, parameters):
         ):
             print(f"Skipping {projectionFile}")
             projectionFiles.remove(projectionFile)
-    N = parameters.trainingSetSize
+    n_requested = parameters.trainingSetSize
     L = len(projectionFiles)
+    if L == 0:
+        raise Exception("No subsampled wavelets found")
 
-    numPerDataSet = round(N / L)
+    n_requested_per_dataset = round(n_requested / L)
     print(f"Number of files: {L}")
-    print(f"Number of samples per file: {numPerDataSet}")
+    print(f"Number of samples per file: {n_requested_per_dataset}")
     numModes = parameters.pcaModes
     numPeriods = parameters.numPeriods
 
-    if numPerDataSet > parameters.training_numPoints:
+    # this happens if the requested per dataset is more than
+    # the size of the subsampled datasets, because either the former is too small
+    # or because we are asking for too many training points
+    if n_requested_per_dataset > parameters.training_numPoints:
         raise ValueError(
             "miniTSNE size is %i samples per file which is low for current trainingSetSize which "
-            "requries %i samples per file. "
+            "requires %i samples per file. "
             "Please decrease trainingSetSize or increase training_numPoints."
-            % (parameters.training_numPoints, numPerDataSet)
+            % (parameters.training_numPoints, n_requested_per_dataset)
         )
 
     if parameters.waveletDecomp:
-        trainingSetData = np.zeros((numPerDataSet * L, numModes * numPeriods))
+        trainingSetData = np.zeros((n_requested_per_dataset * L, numModes * numPeriods))
     else:
-        trainingSetData = np.zeros((numPerDataSet * L, numModes))
-    trainingSetAmps = np.zeros((numPerDataSet * L, 1))
-    useIdx = np.ones((numPerDataSet * L), dtype="bool")
+        trainingSetData = np.zeros((n_requested_per_dataset * L, numModes))
+    trainingSetAmps = np.zeros((n_requested_per_dataset * L, 1))
+    useIdx = np.ones((n_requested_per_dataset * L), dtype="bool")
 
     for i in tqdm(range(L)):
         print(
@@ -558,7 +719,7 @@ def runEmbeddingSubSampling(projectionDirectory, parameters):
             % (i + 1, L, projectionFiles[i])
         )
 
-        currentIdx = np.arange(numPerDataSet) + (i * numPerDataSet)
+        currentIdx = np.arange(n_requested_per_dataset) + (i * n_requested_per_dataset)
 
         yData, signalData, _, signalAmps = file_embeddingSubSampling(
             projectionFiles[i], parameters
@@ -567,7 +728,7 @@ def runEmbeddingSubSampling(projectionDirectory, parameters):
             trainingSetData[currentIdx, :],
             trainingSetAmps[currentIdx],
         ) = findTemplatesFromData(
-            signalData, yData, signalAmps, numPerDataSet, parameters, projectionFiles[i]
+            signalData, yData, signalAmps, n_requested_per_dataset, parameters, projectionFiles[i]
         )
 
         a = np.sum(trainingSetData[currentIdx, :], 1) == 0
@@ -609,7 +770,7 @@ def subsampled_tsne_from_projections(parameters, results_directory):
         raise ValueError("Supported parameter.method are 'TSNE' or 'UMAP'")
 
     print("Finding Training Set")
-    if not os.path.exists(tsne_directory + "training_data.mat"):
+    if not parameters.cache or not os.path.exists(tsne_directory + "training_data.mat"):
         trainingSetData, trainingSetAmps, _ = runEmbeddingSubSampling(
             projection_directory, parameters
         )
@@ -962,7 +1123,7 @@ def findEmbeddings(
     raw_wavelets = data.copy()
     # Apply condition on wavelets
     data_sum = np.sum(raw_wavelets, 1)
-    idx_valid = data_sum > 4e2  # indices of valid points
+    idx_valid = data_sum > MIN_POWER  # indices of valid points
 
     # Only valid points are embedded
     valid_data = data[idx_valid]
@@ -994,15 +1155,23 @@ def findEmbeddings(
         outputStatistics_temp.exitFlags = exitFlags
     elif parameters.method == "UMAP":
         # Split valid data into chunks for parallel processing
+        n_jobs=parameters.numProcessors
+        n_jobs=1
+        valid_data_chunks = np.array_split(valid_data, n_jobs)
+        print(f"Using {n_jobs} processors for embedding")
 
-        pool = multiprocessing.Pool(processes=parameters.numProcessors)
-        print(f"Using {parameters.numProcessors} processors for embedding")
-        valid_data_chunks = np.array_split(valid_data, parameters.numProcessors)
-
-        # Parallelize the UMAP transform for valid data chunks
-        results = pool.starmap(
-            umap_transform, [(chunk, parameters) for chunk in valid_data_chunks]
-        )
+        if n_jobs > 1:
+            pool = multiprocessing.Pool(processes=n_jobs)
+            # Parallelize the UMAP transform for valid data chunks
+            results = pool.starmap(
+                umap_transform, [(chunk, parameters) for chunk in valid_data_chunks]
+            )
+        else:
+            results=[]
+            for chunk in valid_data_chunks:
+                results.append(
+                    umap_transform(chunk, parameters)
+                )
 
         # Combine the results
         zValues_temp_list, trainparams_list = zip(*results)
@@ -1031,8 +1200,17 @@ def findEmbeddings(
 
 def umap_transform(data, parameters):
     umapfolder = parameters["projectPath"] + "/UMAP/"
-    with open(umapfolder + "umap.model", "rb") as f:
-        um = pickle.load(f)
+    if parameters.useGPU>=0:
+        umap_file=umapfolder + "umap.joblib"
+        um = joblib.load(umap_file)
+        print("Using GPU UMAP")
+
+    else:
+        umap_file=umapfolder + "umap.model"
+        with open(umap_file, "rb") as f:
+            um = pickle.load(f)    
+        print("Using CPU UMAP")
+
     trainparams = np.load(umapfolder + "_trainMeanScale.npy", allow_pickle=True)
     embed_negative_sample_rate = parameters["embed_negative_sample_rate"]
     um.negative_sample_rate = embed_negative_sample_rate
@@ -1047,18 +1225,26 @@ def file_embeddingSubSampling_batch(projectionFile, parameters):
 
     with h5py.File(projectionFile, "r") as hfile:
         projections_shape = hfile["projections"][:].T.shape
+
+    # projections_shape = timepoints x n_pcs
     # TODO: Make this more general
     edge_file = (
         "/Genomics/ayroleslab2/scott/git/lts-manuscript/analysis/sample_tracks/edge/"
         + pathlib.Path(projectionFile).stem.split("-")[0]
         + "_edge.mat"
     )
-    print(f"Using edge file: {edge_file}")
+    if os.path.exists(edge_file):
+        print(f"Using edge file: {edge_file}")
 
-    # fly_num = int(pathlib.Path(projectionFile).stem.split("-")[3].split("_")[0])
-    with h5py.File(edge_file, "r") as hfile:
-        edge_mask = np.append([False], hfile["edger"][:].T[:, 0].astype(bool))
-        # edge_mask = np.append([False], hfile["edger"][:].T[:, fly_num].astype(bool))
+        # fly_num = int(pathlib.Path(projectionFile).stem.split("-")[3].split("_")[0])
+        with h5py.File(edge_file, "r") as hfile:
+            edge_mask = np.append([False], hfile["edger"][:].T[:, 0].astype(bool))
+            # edge_mask = np.append([False], hfile["edger"][:].T[:, fly_num].astype(bool))
+    else:
+        logging.warning(f"Edge file {edge_file} not found")
+        edge_file=None
+        edge_mask = np.zeros((projections_shape[0]))
+
     print(f"projection file: {projectionFile}")
     print(f"edge file: {edge_file}")
 
@@ -1079,6 +1265,7 @@ def file_embeddingSubSampling_batch(projectionFile, parameters):
         print(f"projections shape: {missingness_mask.shape}")
         print(f"missingness shape: {edge_mask.shape}")
         print(f"Frac missing: {np.sum(missingness_mask)/projections_shape[0]}")
+    
     if projections_shape[0] < numPoints:
         raise ValueError(
             "Training number of points for miniTSNE is greater than # samples in some files. Please "
@@ -1092,8 +1279,7 @@ def file_embeddingSubSampling_batch(projectionFile, parameters):
         numPoints = N
 
     print(f"Subsampling {N} points to {numPoints} points")
-    # 20230514-mmpy-lts-all-pchip5-headprobinterpy0xhead-medianwin5-gaussian-lombscargle-dynamicwinomega020-singleflysampledtracks
-    # cp -r /Gtt/git/lts-manuscript/analysis/20230514-mmpy-lts-all-pchip5-headprobinterpy0xhead-medianwin5-gaussian-lombscargle-dynamicwinomega020-singleflysampledtracks/Wavelets ./
+
     if parameters.waveletDecomp:
         # TODO: Don't be stupid. Load the wavelets once and then subsample them.
         with h5py.File(
@@ -1101,35 +1287,33 @@ def file_embeddingSubSampling_batch(projectionFile, parameters):
             "r",
         ) as f:
             wlets = f["wavelets"][:]
+            # timepoints x (frequencies * n_pcs)
             print(f"wavelets shape: {wlets.shape}")
-            sum_mask = np.sum(wlets, axis=1) < 4e2
+            sum_mask = np.sum(wlets, axis=1) < MIN_POWER
             print(f"sum_mask shape: {sum_mask.shape}")
             print(
-                f"Fraction with amp lower than 4e2: {np.sum(sum_mask)/projections_shape[0]}"
+                f"Fraction with amp lower than {MIN_POWER}: {np.sum(sum_mask)/projections_shape[0]}"
             )
         signalIdx = np.indices((projections_shape[0],))[0]
-        print(f"signalIdx shape: {signalIdx.shape}")
-        print(f"edge_mask shape: {edge_mask.shape}")
-        mask = np.any(np.vstack([edge_mask, missingness_mask, sum_mask]).T, axis=1)
-        print(f"mask shape: {mask.shape}")
-        signalIdx = signalIdx[[not mask_ele for mask_ele in mask]]
-        # Subset to remove edge calls
-        if signalIdx.shape[0] < numPoints:
-            print("Warning: Not enough points to sample. Using all points")
-            if skipLength == 0:
-                skipLength = 1
-                numPoints = signalIdx.shape[0]
-            print(f"Final signalIdx.shape: {signalIdx.shape}")
-        else:
-            print(f"Found {signalIdx.shape[0]} points to sample")
-            skipLength = np.floor(signalIdx.shape[0] / numPoints).astype(int)
-            signalIdx = signalIdx[0 : int(0 + (numPoints) * skipLength) : skipLength]
+        masks=[
+            # true for any timepoint where the fly was in the edge
+            edge_mask,
+            # true for any timepoint where the fly was missing
+            missingness_mask,
+            # true for any timepoint where the combined power of all wavelets is under MIN_POWER
+            sum_mask
+        ]
+        # print(f"edge_mask shape: {edge_mask.shape}")
+        signalIdx = apply_mask(signalIdx, masks, np.any)
+        signalIdx = subsample(signalIdx, numPoints, skipLength)
+
+
         print(f"Final signalIdx: {signalIdx[0:10]}")
         print(f"Final signalIdx.shape: {signalIdx.shape}")
-        print("\t Calculating Wavelets")
-        print(
-            f"{parameters.projectPath}/Wavelets/{pathlib.Path(projectionFile).stem}-wavelets.mat"
-        )
+        # print("\t Calculating Wavelets")
+        # print(
+        #     f"{parameters.projectPath}/Wavelets/{pathlib.Path(projectionFile).stem}-wavelets.mat"
+        # )
         print("\n Loading wavelets")
         with h5py.File(
             f"{parameters.projectPath}/Wavelets/{pathlib.Path(projectionFile).stem}-wavelets.mat",
@@ -1158,6 +1342,32 @@ def file_embeddingSubSampling_batch(projectionFile, parameters):
             print("File already exists")
     return
 
+
+def subsample(index, number_points, skip_length):
+
+    # Subset to remove edge calls        
+    if index.shape[0] < number_points:
+        print("Warning: Not enough points to sample. Using all points")
+        if skip_length == 0:
+            skip_length = 1
+            number_points = index.shape[0]
+        print(f"Final signalIdx.shape: {index.shape}")
+    else:
+        print(f"Found {index.shape[0]} points to sample")
+        skip_length = np.floor(index.shape[0] / number_points).astype(int)
+        index = index[0 : int(0 + (number_points) * skip_length) : skip_length]
+    return index
+
+def apply_mask(index, masks, f):
+    """
+    Subset an index using a list of masks combined using f
+    """
+    print(f"index shape: {index.shape}")
+    mask = f(np.vstack(masks).T, axis=1)
+
+    print(f"mask shape: {mask.shape}")
+    index = index[[not mask_ele for mask_ele in mask]]
+    return index
 
 def runEmbeddingSubSampling_batch(projectionDirectory, parameters, i):
     """

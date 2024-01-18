@@ -25,6 +25,7 @@ setuptools.setup(
         "easydict",
         "umap-learn",
         "imageio",
+        "moviepy"
     ],
     packages=setuptools.find_packages(),
     classifiers=[

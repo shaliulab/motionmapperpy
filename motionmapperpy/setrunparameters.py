@@ -1,5 +1,5 @@
 from easydict import EasyDict as edict
-
+import yaml
 
 def setRunParameters(parameters=None):
     """
@@ -42,7 +42,8 @@ def setRunParameters(parameters=None):
     # projectPath = "20230507-mmpy-lts-all-pchip5-headprobinterp-medianwin5-gaussian-lombscargle-win50-singleflysampledtracks"
     # projectPath = "20230509-mmpy-lts-all-pchip5-headprobinterp-medianwin5-gaussian-lombscargle-win50-singleflysampledtracks-noyprob"
     # projectPath = "20230509-mmpy-lts-all-pchip5-headprobinterp-medianwin5-gaussian-lombscargle-dynamicwinomega020-singleflysampledtracks-noyprob"
-    projectPath = "20230523-mmpy-lts-all-pchip5-headprobinterp-medianwin5-gaussian-lombscargle-dynamicwinomega020-collapse"
+    projectPath = "FlyHostel_long_timescale_analysis"
+    #"20230523-mmpy-lts-all-pchip5-headprobinterp-medianwin5-gaussian-lombscargle-dynamicwinomega020-collapse"
     # projectPath = (
     #     "20230428-mmpy-lts-all-pchip5-headprobinterp-fillnanmedian-medianwin5-gaussian-cwt"
     # )
@@ -101,7 +102,7 @@ def setRunParameters(parameters=None):
     # %maximum number of iterations for the Nelder-Mead algorithm
     maxOptimIter = 1000
 
-    # %number of points in the training set
+    # %number of points in the training set (which combines data from all flies)
     trainingSetSize = 64000
 
     # %number of neigbors to use when re-embedding
@@ -114,7 +115,8 @@ def setRunParameters(parameters=None):
     training_perplexity = 20
 
     # %number of points to evaluate in each training set file
-    training_numPoints = 36000
+    # % i.e. (one file per fly)
+    training_numPoints =  36000
 
     # %minimum training set template length
     minTemplateLength = 1
@@ -143,7 +145,14 @@ def setRunParameters(parameters=None):
     # Embedding rescaling parameter.
     rescale_max = 100
 
+    deleted_bodyparts=["thorax", "head"]
+    # deleted_bodyparts=["thorax", "head", "abdomen", "proboscis", "leftWing", "rightWing", "foreLeft_Leg", "foreRightLeg", "rearLeftLeg", "rearRightLeg"]
+
     """%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%"""
+
+
+    if not "deleted_bodyparts" in parameters.keys():
+        parameters.deleted_bodyparts = deleted_bodyparts
 
     if not "numProcessors" in parameters.keys():
         parameters.numProcessors = numProcessors
@@ -231,5 +240,27 @@ def setRunParameters(parameters=None):
 
     if not "umapSubsampMetric" in parameters.keys():
         parameters.umapSubsampMetric = umapSubsampMetric
+
+    # TODO Remove from here and make it a config file or something external to the code
+    parameters.projectPath="FlyHostel_long_timescale_analysis"
+    parameters.samplingFreq=150
+    parameters.minF=1
+    parameters.maxF=75
+    parameters.numPeriods=20
+    parameters.useGPU=-1
+    parameters.stride=1
+    parameters.cache=False
+    # parameters.trainingSetSize=9000
+    # parameters.training_numPoints=9000
+    parameters.umapMetric = "euclidean"
+    parameters.umapSubsampMetric  = "euclidean"
+    parameters.numProcessors=48
+    parameters.preprocess=False
+    parameters.omega0=20
+    parameters.omega0=62 # at 1 Hz -> window of 10 seconds
+    parameters.wavelet_downsample=5
+
+    with open("config.yaml", "w") as handle:
+        yaml.dump(parameters, handle)
 
     return parameters
