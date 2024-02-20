@@ -358,7 +358,7 @@ def file_embeddingSubSampling(projectionFile, parameters):
 from tqdm import tqdm
 
 
-def get_wavelets(projectionFiles, parameters, i, ls=False):
+def get_wavelets(projectionFiles, parameters, i, ls=False, cache=None):
 
     if isinstance(i, int):
         projectionFile=projectionFiles[i]
@@ -372,7 +372,7 @@ def get_wavelets(projectionFiles, parameters, i, ls=False):
 
     print(f"Processing {projectionFile}")
     if ls:
-        calc_and_write_wavelets_ls(projectionFile, parameters)
+        calc_and_write_wavelets_ls(projectionFile, parameters, cache=cache)
     else:
         calc_and_write_wavelets(projectionFile, parameters)
 
@@ -590,7 +590,7 @@ def rolling_lombscargle(data, sampling_times, freqs, window_sizes, skip=1):
     return periodograms.T
 
 
-def calc_and_write_wavelets_ls(projectionFile, parameters):
+def calc_and_write_wavelets_ls(projectionFile, parameters, cache=None):
     # calculate and write wavelets with lomb-scargle from scipy
     print("\t Loading Projections")
 
@@ -598,38 +598,50 @@ def calc_and_write_wavelets_ls(projectionFile, parameters):
         projections = hfile["projections"][:].T
         node_names = hfile["node_names"][:]
     projections = np.array(projections)
+    if cache is not None:
+        final_output=f"{cache}/Wavelets/{pathlib.Path(projectionFile).stem}-wavelets.mat"
+        cache_exists=os.path.exists(final_output)
+    else:
+        cache_exists=False
 
     if parameters.waveletDecomp:
-        print("\t Calculating Wavelets")
+        output_file=f"{parameters.projectPath}/Wavelets/{pathlib.Path(projectionFile).stem}-wavelets.mat"
+
         if not os.path.exists(
-            f"{parameters.projectPath}/Wavelets/{pathlib.Path(projectionFile).stem}-wavelets.mat"
+            output_file
         ):
-            data, freqs, win_sizes, indices = mm_findWavelets_ls(projections, parameters)
-            freq_names=[]
-            for part in node_names:
-                for freq in freqs:
-                    freq_names.append(
-                        part.decode() + "_x_" + str(round(freq, 4))
-                    )
-                    freq_names.append(
-                        part.decode() + "_y_" + str(round(freq, 4))
-                    )
             
-            assert len(freq_names) == data.shape[1]
-            print(f"\n Saving wavelets: {data.shape}")
-            with h5py.File(
-                f"{parameters.projectPath}/Wavelets/{pathlib.Path(projectionFile).stem}-wavelets.mat",
-                "w",
-                libver="latest",
-            ) as f:
-                print("No compression")
-                f.create_dataset("wavelets", data=data)
-                f.create_dataset("indices", data=indices)
-                f.create_dataset("f", data=freqs)
-                f.create_dataset("win_sizes", data=win_sizes)
-                f.create_dataset("node_names", data=node_names)
-                f.create_dataset("freq_names", data=freq_names)
+            if cache_exists:
+                print(f"\t Restoring cached {final_output}. {output_file} becomes a link to it")
+                #shutil.copy(final_output, f"{parameters.projectPath}/Wavelets/{pathlib.Path(projectionFile).stem}-wavelets.mat")
+                os.symlink(final_output, output_file)
+            else:
+                print("\t Calculating Wavelets")
+                data, freqs, win_sizes, indices = mm_findWavelets_ls(projections, parameters)
+                freq_names=[]
+                for part in node_names:
+                    for freq in freqs:
+                        freq_names.append(
+                            part.decode() + "_x_" + str(round(freq, 4))
+                        )
+                        freq_names.append(
+                            part.decode() + "_y_" + str(round(freq, 4))
+                        )
                 
+                assert len(freq_names) == data.shape[1]
+                print(f"\n Saving wavelets: {data.shape}")
+                with h5py.File(
+                    output_file,
+                    "w",
+                    libver="latest",
+                ) as f:
+                    print("No compression")
+                    f.create_dataset("wavelets", data=data)
+                    f.create_dataset("indices", data=indices)
+                    f.create_dataset("f", data=freqs)
+                    f.create_dataset("win_sizes", data=win_sizes)
+                    f.create_dataset("node_names", data=node_names)
+                    f.create_dataset("freq_names", data=freq_names)
 
 
 def calc_and_write_wavelets(projectionFile, parameters):
