@@ -27,7 +27,6 @@ from skimage.filters import roberts
 from skimage.segmentation import watershed
 from sklearn.manifold import TSNE
 from sklearn.neighbors import NearestNeighbors
-from umap import UMAP as cpuUMAP
 import joblib
 import numpy as np
 from scipy.signal import lombscargle
@@ -36,10 +35,16 @@ from .mmutils import findPointDensity, gencmap
 from .setrunparameters import setRunParameters
 from .wavelet import findWavelets
 
+logger = logging.getLogger(__name__)
+
+try:
+    from umap import UMAP as cpuUMAP
+except:
+    logger.warning("umap not supported")
+    cpuUMAP=None
 # MIN_POWER=4e2
 MIN_POWER=1
 
-logger = logging.getLogger(__name__)
 
 try:
     from cuml.manifold.umap import UMAP as cumlUMAP
