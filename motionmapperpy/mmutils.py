@@ -1,5 +1,6 @@
 import copy
 import os
+import logging
 
 import h5py
 import hdf5storage
@@ -7,7 +8,13 @@ import matplotlib as mpl
 import numpy as np
 from scipy.fft import fft2, fftshift, ifft2
 from scipy.io import loadmat
-from awkde import GaussianKDE
+logger=logging.getLogger(__name__)
+
+try:
+    from awkde import GaussianKDE
+except:
+    logger.warning("awkde not found")
+    GaussianKDE=None
 
 
 def gencmap():
@@ -104,6 +111,8 @@ def findPointDensity_awkde(zValues, alpha, glob_bw, numPoints, rangeVals):
 
 
 def compute_density_map(zValues, alpha, glob_bw, grid_pts, numPoints):
+    if GaussianKDE is None:
+        raise ModuleNotFoundError("awkde not installed")
     kde = GaussianKDE(glob_bw=glob_bw, alpha=alpha, diag_cov=True)
     kde.fit(zValues)
 
